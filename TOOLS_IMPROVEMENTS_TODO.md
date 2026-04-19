@@ -14,44 +14,17 @@ Tracking improvements and enhancements for the LaTeX accessibility toolkit.
 ## ⭐ Quick Wins (Easy, High Impact)
 _These can be done quickly and provide immediate value_
 
-### QW4. Add --help Text with Examples ⏳
+### QW4. Add --help Text with Examples ✅ DONE
 **Effort:** 🟢 Low (15 min) | **Impact:** Better discoverability
 
-Enhance `--help` output to include common examples for each command.
-
-**How to test:**
-```bash
-python3 latex-accessibility.py --help
-# Should show usage, commands, and examples
-```
+Replaced module docstring with structured help: COMMANDS table, FLAGS table, EXAMPLES section, and summaries of what `add` does automatically vs warns about. Running with no arguments now shows help instead of an error. `-h` added as alias for `--help`.
 
 ---
 
-### QW5. Add Troubleshooting Section to README ⏳
+### QW5. Add Troubleshooting Section to README ✅ DONE
 **Effort:** 🟢 Low (20 min) | **Impact:** Reduces support questions
 
-Add common issues and solutions:
-- "TeX capacity exceeded" error
-- "Package not found" errors
-- Permission denied errors
-- UTF-8 encoding issues
-
-**How to test:** Review section for completeness and clarity.
-
----
-
-### QW6. Color-Coded Output ⏳
-**Effort:** 🟢 Low (30 min) | **Impact:** Easier to scan output
-
-Add color to terminal output:
-- ✅ Green for success
-- ❌ Red for errors
-- ⚠️  Yellow for warnings
-- ℹ️  Blue for info
-
-Use colorama library with fallback for Windows compatibility.
-
-**How to test:** Run on Linux/Mac/Windows, verify colors display correctly or fall back gracefully.
+Added Troubleshooting section to README.md covering: "TeX capacity exceeded", missing LaTeX packages, permission denied, UTF-8 encoding issues, PDF not updated after changes, file already compliant, and tqdm not installed. Each entry includes the exact error symptom, cause, and fix with example commands.
 
 ---
 
@@ -94,42 +67,6 @@ python3 latex-accessibility.py list-backups
 ## 📌 Medium Priority Improvements
 _Useful features that enhance usability_
 
-### MP3. Configuration File Support ⏳
-**Effort:** 🟡 Medium (2 hours) | **Priority:** 📌 Medium
-
-**What it does:**
-Let users customize settings via config file instead of command-line flags.
-
-**Why it matters:**
-Easier to maintain consistent settings across a project.
-
-**How to implement:**
-1. Support `.latex-accessibility.yaml` or `.latex-accessibility.ini`
-2. Look for config in current directory, then home directory
-3. Allow customizing:
-   - HTML URL pattern
-   - Which packages to add
-   - Custom accessibility notice text
-   - Default backup behavior
-
-**Example config:**
-```yaml
-# .latex-accessibility.yaml
-html_url_pattern: "https://mysite.edu/{parent}/{section}/{filename}.html"
-packages:
-  - bookmark
-  - enumitem
-  - accessibility
-backup_by_default: true
-custom_notice: |
-  This document is available in accessible formats at {html_url}
-```
-
-**How to test:**
-Create config file, run tool, verify settings are used.
-
----
-
 ### MP4. Template System for Notices ⏳
 **Effort:** 🟢 Low (45 min) | **Priority:** 📌 Medium
 
@@ -160,60 +97,12 @@ Create custom template, run tool, verify custom text is used.
 ## 💡 Low Priority / Nice-to-Have
 _Would be nice but not essential_
 
-### LP1. Git Integration ⏳
-**Effort:** 🟢 Low (30 min) | **Priority:** 💡 Nice-to-Have
-
-**What it does:**
-Automatically commit changes with descriptive message.
-
-**Why it matters:**
-Saves time for users who want changes tracked in git.
-
-**How to implement:**
-1. Add `--commit` flag
-2. Check if directory is a git repo
-3. Create commit with message listing modified files
-4. Warn if there are uncommitted changes first
-
-**How to test:**
-```bash
-python3 latex-accessibility.py add-all --commit labs/
-
-# Creates git commit:
-# "Add accessibility features to 14 lab files
-#
-# Modified: shellbasics.tex, shellcond.tex, ..."
-```
-
----
-
-### LP2. Interactive Mode / Wizard ⏳
+### LP2. Interactive Mode / Wizard ✅ DONE
 **Effort:** 🟡 Medium (2 hours) | **Priority:** 💡 Nice-to-Have
 
-**What it does:**
-Step-by-step wizard for users who prefer interactive prompts.
-
-**Why it matters:**
-Some users prefer guided experience over command-line flags.
-
-**How to implement:**
-1. Add `interactive` command
-2. Prompt for: file/directory, HTML URL, which features to add
-3. Show preview of changes
-4. Confirm before applying
-5. Use arrow keys for navigation (library: `questionary` or `inquirer`)
-
-**How to test:**
-```bash
-python3 latex-accessibility.py interactive
-
-# Wizard prompts:
-# 1. Select file or directory: [browse]
-# 2. HTML URL pattern: [input]
-# 3. Features to add: [✓] Packages [✓] Bookmarks [✓] Notice
-# 4. Preview changes? [Yes/No]
-# 5. Apply changes? [Yes/No]
-```
+Added `wizard` command (also accepts `interactive`). No extra libraries needed — uses built-in `input()`.
+Steps: file vs directory → path → HTML URL → dry-run preview → confirm → apply → optional report.
+Ctrl-C cancels cleanly at any step.
 
 ---
 
@@ -261,21 +150,6 @@ Create comprehensive test .tex with all environments, verify proper handling.
 ## 📚 Documentation Improvements
 _Making the tools easier to learn and use_
 
-### DOC1. Quick Start Video Tutorial ⏳
-**Effort:** 🔴 High (3+ hours) | **Priority:** 💡 Nice-to-Have
-
-**What to create:**
-Short (5-10 min) video showing:
-1. Installation and setup
-2. Making a single file accessible
-3. Batch processing a directory
-4. Viewing results
-
-**Where to host:**
-YouTube or similar, link from README
-
----
-
 ### DOC4. Contributing Guide ⏳
 **Effort:** 🟢 Low (30 min) | **Priority:** 💡 Nice-to-Have
 
@@ -292,55 +166,28 @@ Add CONTRIBUTING.md with:
 ## ♿ Accessibility of the Tools Themselves
 _Making the tools accessible to all users_
 
-### ACC1. Better Error Messages for Screen Reader Users ⏳
-**Effort:** 🟢 Low (30 min) | **Priority:** 📌 Medium
+---
 
-**What to improve:**
-Current messages use emojis (✓, ❌, ○) which may not read well on screen readers.
+### ACC3. Plain Text Output Mode ✅
+Added `--plain` flag that replaces all emoji status symbols with bracketed text equivalents.
+Symbols are detected from `sys.argv` before any output, so the whole run is consistent:
+- `✓` → `[OK]`
+- `○` → `[SKIP]`
+- `⚠️ ` → `[WARN]`
+- `❌` → `[ERR]`
+- `✅` → `[DONE]`
 
-**How to fix:**
-Add text equivalents:
-- `✓` → `[SUCCESS]` or `✓ Success:`
-- `❌` → `[ERROR]` or `❌ Error:`
-- `○` → `[SKIP]` or `○ Skipped:`
-- `⚠️` → `[WARNING]` or `⚠️ Warning:`
-
-**How to test:**
-Test with screen reader (NVDA, JAWS, VoiceOver) or just ensure text is always present.
+Works with any command: `add`, `fix`, `add-all`, `fix-all`, `validate`, `validate-all`,
+`report`, `check-packages`. Emoji in the generated Markdown report file content are
+unchanged (those are file output, not terminal output).
 
 ---
 
-### ACC2. Verbose Mode for Detailed Output ⏳
+### ACC2. Verbose Mode for Detailed Output ✅ DONE
 **Effort:** 🟢 Low (20 min) | **Priority:** 💡 Nice-to-Have
 
-**What to add:**
-Add `--verbose` flag for users who need more detailed output.
-
-**Normal mode:**
-```
-✓ Added accessibility features to myfile.tex
-```
-
-**Verbose mode:**
-```
-✓ Added accessibility features to myfile.tex
-  - Added package: bookmark
-  - Added package: enumitem
-  - Added bookmarksetup configuration
-  - Added accessibility notice
-  - Wrapped 3 plain URLs
-```
-
----
-
-### ACC3. Plain Text Output Mode ⏳
-**Effort:** 🟢 Low (15 min) | **Priority:** 💡 Nice-to-Have
-
-**What to add:**
-Add `--plain` flag to disable all colors and emojis for accessibility or scripting.
-
-**How to implement:**
-Set flag that disables colorama colors and replaces emojis with text.
+Added `--verbose` flag. Lists each change made per file immediately before the summary line.
+Works with `add` and `add-all`. Compatible with `--plain` for fully text-based output.
 
 ---
 
@@ -421,7 +268,7 @@ Verify tools work on:
 ## 🔧 Additional LaTeX Features
 _Specific LaTeX commands and environments to handle better_
 
-### LAT1. Better \includegraphics Handling ⏳
+### LAT1. Better \includegraphics Handling ✅ DONE
 **Effort:** 🟡 Medium (1-2 hours) | **Priority:** 💡 Nice-to-Have
 
 **What to detect:**
@@ -439,7 +286,7 @@ Find `\includegraphics{image.png}` and suggest adding descriptions.
 
 ---
 
-### LAT2. Detect Missing Alt Text in Figures ⏳
+### LAT2. Detect Missing Alt Text in Figures ✅ DONE
 **Effort:** 🟡 Medium (1 hour) | **Priority:** 💡 Nice-to-Have
 
 **What to check:**
@@ -453,7 +300,7 @@ Ensure figures have \caption for accessibility.
 
 ---
 
-### LAT3. Table Accessibility Checks ⏳
+### LAT3. Table Accessibility Checks ✅ DONE
 **Effort:** 🟡 Medium (1-2 hours) | **Priority:** 💡 Nice-to-Have
 
 **What to check:**
@@ -463,7 +310,7 @@ Ensure figures have \caption for accessibility.
 
 ---
 
-### LAT4. Detect Color-Only Information ⏳
+### LAT4. Detect Color-Only Information ✅ DONE
 **Effort:** 🟡 Medium (1-2 hours) | **Priority:** 💡 Nice-to-Have
 
 **What to detect:**
@@ -584,6 +431,17 @@ Processing 14 file(s) in IntroLinux/labs
 ```
 
 Errors now return `None` (vs `False` for already-compliant) so they're counted separately.
+
+### ACC1. Better Error Messages for Screen Reader Users ✅
+Audited every emoji use in `latex-accessibility.py` and added explicit text status words
+where the emoji was the only indicator of meaning:
+- `  ✓ {package}` → `  ✓ {package} — installed` (required and optional package listings)
+- `  ❌ {package} (missing)` → `  ❌ {package} — missing` (consistent phrasing)
+- `  ○ {package} (not installed, but optional)` → `  ○ {package} — not installed (optional)`
+- `  ❌ {location}{msg}` (parsed LaTeX errors) → `  ❌ Error: {location}{msg}`
+All other emoji uses already had a status verb or noun immediately following them.
+
+---
 
 ### MP1. Dry Run Mode ✅
 Added `--dry-run` flag to `add`, `fix`, `add-all`, and `fix-all` commands.

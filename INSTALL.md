@@ -1,61 +1,115 @@
 # Installation Guide
 
-## Installing Pandoc (Recommended)
+## Requirements
 
-Pandoc is the best tool for converting .tex to HTML, especially with the accessibility package.
+| Tool | Required for | Install |
+|------|-------------|---------|
+| Python 3 | Everything | Usually pre-installed |
+| pdflatex | PDF generation, `validate` command | See LaTeX section below |
+| pandoc | `--backend=pandoc`, PDF reports | See pandoc section below |
+| entr | `make watch` (auto-convert on save) | `sudo apt-get install entr` |
+| tqdm | `--progress` flag | `pip install tqdm` |
 
-### Option 1: From Ubuntu repositories (easiest)
+---
+
+## Python 3
+
+Python 3 is required for all tools. Check your version:
+
 ```bash
-sudo apt-get update
-sudo apt-get install pandoc
+python3 --version
 ```
 
-### Option 2: Download latest version directly
+Most Linux and macOS systems have Python 3 pre-installed. For Windows, download from [python.org](https://www.python.org/downloads/).
+
+---
+
+## LaTeX (for PDF generation and `validate`)
+
+### Ubuntu / Debian
 ```bash
-# Download the latest .deb file
+sudo apt-get install texlive-latex-base texlive-fonts-recommended
+```
+
+### macOS
+Install [MacTeX](https://www.tug.org/mactex/).
+
+### Windows
+Install [MiKTeX](https://miktex.org) or [TeX Live](https://www.tug.org/texlive/).
+
+---
+
+## Pandoc (for `--backend=pandoc` and PDF reports)
+
+### Option 1: From system repositories
+```bash
+sudo apt-get update && sudo apt-get install pandoc
+```
+
+### Option 2: Download latest directly (Ubuntu/Debian)
+```bash
 wget https://github.com/jgm/pandoc/releases/download/3.1.11/pandoc-3.1.11-1-amd64.deb
-
-# Install it
 sudo dpkg -i pandoc-3.1.11-1-amd64.deb
-
-# Clean up
 rm pandoc-3.1.11-1-amd64.deb
 ```
 
-### Option 3: Using snap
+### Option 3: Snap
 ```bash
 sudo snap install pandoc
 ```
 
-## Installing Watch Tools (Optional)
+---
 
-For automatic conversion when files change:
+## Optional: tqdm (progress bar)
+
+Enables the `--progress` flag for batch operations:
 
 ```bash
-sudo apt-get install inotify-tools entr
+pip install tqdm
 ```
+
+Without it, `--progress` falls back to standard output with a clear message.
+
+---
+
+## Optional: entr (auto-convert on file save)
+
+Enables `make watch` to automatically re-convert `.tex` files when they change:
+
+```bash
+sudo apt-get install entr
+```
+
+---
 
 ## Verify Installation
 
 ```bash
+# Check the accessibility tool
+python3 latex-accessibility.py --version
+
+# Check pdflatex
+pdflatex --version
+
+# Check pandoc (optional)
 pandoc --version
-inotifywait --help
+
+# Run the built-in package checker
+python3 latex-accessibility.py check-packages
 ```
 
-## Why Pandoc?
-
-The .tex files use the `accessibility` package which has PDF-specific commands that don't work with make4ht/htlatex. Pandoc handles these correctly and produces cleaner HTML.
-
-## Test After Installation
-
-```bash
-cd IntroData/labs
-make                 # Should work now!
-```
+---
 
 ## Troubleshooting
 
-If pandoc installation fails, you may need to:
-1. Update your package list: `sudo apt-get update`
-2. Fix any broken dependencies: `sudo apt-get install -f`
-3. Try the direct download method (Option 2 above)
+**`python3: command not found`**
+Install Python 3 for your OS (see above).
+
+**`pdflatex: command not found`**
+Install a LaTeX distribution (see above). On Ubuntu: `sudo apt-get install texlive-latex-base`.
+
+**pandoc installation fails**
+Try `sudo apt-get update` first, then `sudo apt-get install -f` to fix broken dependencies. If that doesn't work, use the direct download (Option 2).
+
+**`--progress` shows a warning about tqdm**
+Run `pip install tqdm` to enable the progress bar. The tool works fine without it.

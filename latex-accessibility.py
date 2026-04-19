@@ -1,55 +1,80 @@
 #!/usr/bin/env python3
-r"""
-LaTeX Accessibility Tool - Add and fix accessibility features in .tex files
+r"""LaTeX Accessibility Tool v{version} — make .tex files accessible for PDF and HTML output.
 
-This tool helps make LaTeX documents more accessible by:
-- Adding required accessibility packages (accessibility, bookmark, enumitem)
-- Adding accessibility notices for HTML versions
-- Fixing common LaTeX structure issues (hypersetup, bookmarksetup)
-- Converting plain URLs to proper \url{} commands
+COMMANDS
+  wizard                        Step-by-step guided mode (recommended for first-time use)
 
-Usage:
-    # Check if LaTeX and required packages are installed
-    python3 latex-accessibility.py check-packages
+  add <file.tex>                Add accessibility features to a single file
+  add-all <directory>           Add accessibility features to every .tex file in a directory
+  fix <file.tex>                Fix structural issues (e.g. bookmarksetup inside hypersetup)
+  fix-all <directory>           Fix structural issues in every .tex file in a directory
 
-    # Add all accessibility features to a file
-    python3 latex-accessibility.py add <file.tex>
+  validate <file.tex>           Compile with pdflatex and report accessibility features
+  validate-all <directory>      Validate every .tex file in a directory
 
-    # Preview what would change without modifying the file
-    python3 latex-accessibility.py add <file.tex> --dry-run
+  report <directory>            Generate a Markdown accessibility compliance report
+  check-packages                Check whether LaTeX and required packages are installed
 
-    # Fix structural issues in a file
-    python3 latex-accessibility.py fix <file.tex>
+FLAGS (work with most commands)
+  --dry-run                     Show what would change without writing any files
+  --verbose                     Print each individual change made per file
+  --plain                       Replace emoji with [OK]/[WARN]/[ERR] for screen readers
+  --progress                    Show a progress bar for batch operations (requires tqdm)
+  --format=pdf                  Output report as PDF instead of Markdown (requires pandoc)
+  --output=<path>               Custom output path for the report file
+  --version / -v                Print version and exit
+  --help / -h                   Show this help and exit
 
-    # Add accessibility features to all .tex files in a directory
-    python3 latex-accessibility.py add-all <directory>
+EXAMPLES
+  First time? Use the wizard:
+    python3 latex-accessibility.py wizard
 
-    # Preview what add-all would do without writing any files
-    python3 latex-accessibility.py add-all <directory> --dry-run
+  Preview what a file needs (no changes written):
+    python3 latex-accessibility.py add mylab.tex --dry-run
 
-    # Fix all .tex files in a directory
-    python3 latex-accessibility.py fix-all <directory>
+  Make a single file accessible:
+    python3 latex-accessibility.py add mylab.tex
 
-    # Use compact tqdm progress bar instead of per-file output (requires: pip install tqdm)
-    python3 latex-accessibility.py add-all <directory> --progress
+  See exactly what changed, line by line:
+    python3 latex-accessibility.py add mylab.tex --verbose
 
-    # Check a file compiles correctly and report accessibility features
-    python3 latex-accessibility.py validate <file.tex>
+  Fix a file that fails to compile:
+    python3 latex-accessibility.py fix mylab.tex
 
-    # Validate all .tex files in a directory
-    python3 latex-accessibility.py validate-all <directory>
+  Process a whole directory (with preview first):
+    python3 latex-accessibility.py add-all labs/ --dry-run
+    python3 latex-accessibility.py add-all labs/ --verbose
 
-    # Generate a Markdown accessibility compliance report for a directory
-    python3 latex-accessibility.py report <directory>
+  Check for missing captions, alt text, and color-only issues:
+    python3 latex-accessibility.py add mylab.tex --dry-run
 
-    # Generate a PDF report (requires pandoc)
-    python3 latex-accessibility.py report <directory> --format=pdf
+  Generate a compliance report for a directory:
+    python3 latex-accessibility.py report labs/
+    python3 latex-accessibility.py report labs/ --format=pdf
 
-    # Specify a custom output file path
-    python3 latex-accessibility.py report <directory> --output=my_report.md
+  Verify a file still compiles after changes:
+    python3 latex-accessibility.py validate mylab.tex
+
+  Use without emoji (for screen readers or CI scripts):
+    python3 latex-accessibility.py add-all labs/ --plain
+
+WHAT 'add' DOES AUTOMATICALLY
+  - Adds \usepackage{{bookmark}} and \usepackage{{enumitem}} if missing
+  - Adds \bookmarksetup{{}} configuration for PDF navigation
+  - Adds an Accessibility Notice section linking to the HTML version
+  - Wraps plain URLs in \url{{}} so they are clickable in the PDF
+  - Adds % Alt text: hint comments after \includegraphics lines missing one
+
+WHAT 'add' WARNS ABOUT (requires manual fix in the source file)
+  - Figures missing \caption
+  - Tables missing \caption
+  - \includegraphics without an alt text hint comment
+  - \textcolor{{}}{{}} usage with no bold/italic/underline cue (color-only information)
+
+For full documentation see README.md or INSTALL.md.
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 import sys
 import re
@@ -63,6 +88,17 @@ try:
     HAS_TQDM = True
 except ImportError:
     HAS_TQDM = False
+
+# Detect --plain / --verbose early (before any output) so they apply for the whole run
+_PLAIN   = '--plain'   in sys.argv
+_VERBOSE = '--verbose' in sys.argv
+
+# Status symbols — emoji by default, plain bracketed text with --plain
+SYM_OK   = "[OK]"   if _PLAIN else "✓"
+SYM_SKIP = "[SKIP]" if _PLAIN else "○"
+SYM_WARN = "[WARN]" if _PLAIN else "⚠️ "
+SYM_ERR  = "[ERR]"  if _PLAIN else "❌"
+SYM_DONE = "[DONE]" if _PLAIN else "✅"
 
 
 def check_package_installed(package_name):
@@ -154,7 +190,7 @@ def check_latex_packages():
         latex_installed = False
 
     if not latex_installed:
-        print("❌ LaTeX does not appear to be installed (kpsewhich not found)")
+        print(f"{SYM_ERR} LaTeX does not appear to be installed (kpsewhich not found)")
         print("\nLaTeX is required to generate PDFs from .tex files.")
         os_type = detect_os()
         install_info = get_installation_command(os_type)
@@ -164,7 +200,7 @@ def check_latex_packages():
             print(f"  {install_info['alt']}")
         return False
 
-    print("✓ LaTeX is installed (kpsewhich found)\n")
+    print(f"{SYM_OK} LaTeX is installed (kpsewhich found)\n")
 
     # Check required packages
     missing_packages = []
@@ -174,10 +210,10 @@ def check_latex_packages():
     for package in required_packages:
         status = check_package_installed(package)
         if status:
-            print(f"  ✓ {package}")
+            print(f"  {SYM_OK} {package} — installed")
             installed_packages.append(package)
         else:
-            print(f"  ❌ {package} (missing)")
+            print(f"  {SYM_ERR} {package} — missing")
             missing_packages.append(package)
 
     # Check optional packages
@@ -185,14 +221,14 @@ def check_latex_packages():
     for package in optional_packages:
         status = check_package_installed(package)
         if status:
-            print(f"  ✓ {package}")
+            print(f"  {SYM_OK} {package} — installed")
             installed_packages.append(package)
         else:
-            print(f"  ○ {package} (not installed, but optional)")
+            print(f"  {SYM_SKIP} {package} — not installed (optional)")
 
     # Provide installation instructions if packages are missing
     if missing_packages:
-        print(f"\n❌ Missing {len(missing_packages)} required package(s): {', '.join(missing_packages)}")
+        print(f"\n{SYM_ERR} Missing {len(missing_packages)} required package(s): {', '.join(missing_packages)}")
         print("\nThese packages are needed for the accessibility features to work.")
 
         os_type = detect_os()
@@ -206,7 +242,7 @@ def check_latex_packages():
         print("\nAfter installation, run this command again to verify.")
         return False
     else:
-        print("\n✅ All required packages are installed!")
+        print(f"\n{SYM_DONE} All required packages are installed!")
         print("\nYou're ready to use the LaTeX accessibility tools.")
         return True
 
@@ -290,7 +326,7 @@ This document is also available in HTML format at:
 The HTML version provides enhanced accessibility features including keyboard navigation, screen reader support, responsive design, dark mode support, and high contrast options.
 
 '''
-        content = re.sub(pattern, r'\1\n' + notice, content)
+        content = re.sub(pattern, lambda m: m.group(1) + '\n' + notice, content)
         modified = True
 
     return content, modified
@@ -358,22 +394,143 @@ def fix_plain_urls(content):
     return '\n'.join(fixed_lines), modified
 
 
-def add_all_features(tex_file, html_url=None, dry_run=False):
+def add_alt_text_hints(content):
+    r"""Add % Alt text: hint comments after \includegraphics lines that lack one.
+
+    Only inserts a hint when the very next non-blank line is not already an
+    alt text comment.  Returns (new_content, modified, count).
+    """
+    lines = content.split('\n')
+    result = []
+    modified = False
+    count = 0
+
+    for i, line in enumerate(lines):
+        result.append(line)
+        # Skip comment lines
+        if line.lstrip().startswith('%'):
+            continue
+        if re.search(r'\\includegraphics', line):
+            # Check whether the next non-empty line is already an alt text comment
+            already_has_hint = '% Alt text:' in line
+            if not already_has_hint:
+                for j in range(i + 1, min(i + 4, len(lines))):
+                    stripped = lines[j].strip()
+                    if stripped:
+                        if stripped.startswith('% Alt text:'):
+                            already_has_hint = True
+                        break
+            if not already_has_hint:
+                result.append('% Alt text: [Add description here for accessibility]')
+                modified = True
+                count += 1
+
+    return '\n'.join(result), modified, count
+
+
+def check_figure_captions(content):
+    r"""Find \begin{figure} environments that are missing a \caption.
+
+    Returns a list of 1-based line numbers where caption-less figures begin.
+    Handles both figure and figure* environments.
+    """
+    missing = []
+    lines = content.split('\n')
+    in_figure = False
+    figure_line = None
+    has_caption = False
+
+    for i, line in enumerate(lines, 1):
+        if re.search(r'\\begin\{figure', line):
+            in_figure = True
+            figure_line = i
+            has_caption = False
+        elif re.search(r'\\end\{figure', line):
+            if in_figure and not has_caption:
+                missing.append(figure_line)
+            in_figure = False
+            figure_line = None
+            has_caption = False
+        elif in_figure and re.search(r'\\caption', line):
+            has_caption = True
+
+    return missing
+
+
+def check_color_only_text(content):
+    r"""Find \textcolor{}{} where the text has no additional non-color formatting cue.
+
+    Color-only information is inaccessible to users with color vision deficiency.
+    Checks for \textbf, \textit, \emph, \underline, \textsc, \textsf, \texttt as cues.
+
+    Returns a list of (line_num, color, snippet) tuples for potentially inaccessible usage.
+    """
+    issues = []
+    lines = content.split('\n')
+    color_pattern = re.compile(r'\\textcolor\{([^}]+)\}\{([^}]*)\}')
+    cue_pattern = re.compile(r'\\(?:textbf|textit|emph|underline|textsc|textsf|texttt)')
+
+    for i, line in enumerate(lines, 1):
+        if line.lstrip().startswith('%'):
+            continue
+        for m in color_pattern.finditer(line):
+            color = m.group(1)
+            text = m.group(2)
+            if not cue_pattern.search(text):
+                snippet = m.group(0)
+                if len(snippet) > 60:
+                    snippet = snippet[:57] + '...'
+                issues.append((i, color, snippet))
+
+    return issues
+
+
+def check_table_captions(content):
+    r"""Find \begin{table} environments that are missing a \caption.
+
+    Returns a list of 1-based line numbers where caption-less tables begin.
+    Handles both table and table* environments.
+    """
+    missing = []
+    lines = content.split('\n')
+    in_table = False
+    table_line = None
+    has_caption = False
+
+    for i, line in enumerate(lines, 1):
+        if re.search(r'\\begin\{table', line):
+            in_table = True
+            table_line = i
+            has_caption = False
+        elif re.search(r'\\end\{table', line):
+            if in_table and not has_caption:
+                missing.append(table_line)
+            in_table = False
+            table_line = None
+            has_caption = False
+        elif in_table and re.search(r'\\caption', line):
+            has_caption = True
+
+    return missing
+
+
+def add_all_features(tex_file, html_url=None, dry_run=False, verbose=False):
     """Add all accessibility features to a .tex file.
 
     When dry_run=True the file is never written; instead a summary of what
-    would change is printed.  Return values are the same as the normal path:
+    would change is printed.  When verbose=True, a detail line is printed for
+    each change made.  Return values are the same as the normal path:
     True = would/did modify, False = already compliant, None = error.
     """
     try:
         with open(tex_file, 'r', encoding='utf-8') as f:
             original_content = f.read()
     except UnicodeDecodeError:
-        print(f"❌ Error: File {tex_file} is not valid UTF-8 text")
+        print(f"{SYM_ERR} Error: File {tex_file} is not valid UTF-8 text")
         print("   Suggestion: Check if this is a binary file or has encoding issues")
         return None
     except Exception as e:
-        print(f"❌ Error reading {tex_file}: {e}")
+        print(f"{SYM_ERR} Error reading {tex_file}: {e}")
         return None
 
     # Auto-generate HTML URL if not provided
@@ -396,8 +553,14 @@ def add_all_features(tex_file, html_url=None, dry_run=False):
         content, notice_modified = add_accessibility_notice(content, html_url)
     else:
         notice_modified = False
+    content, alt_modified, alt_count = add_alt_text_hints(content)
 
-    modified = pkg_modified or url_modified or bookmark_modified or notice_modified
+    modified = pkg_modified or url_modified or bookmark_modified or notice_modified or alt_modified
+
+    # Advisory checks — never block or modify, run on original_content for accurate line numbers
+    caption_issues = check_figure_captions(original_content)
+    table_caption_issues = check_table_captions(original_content)
+    color_issues = check_color_only_text(original_content)
 
     if dry_run:
         if modified:
@@ -416,11 +579,19 @@ def add_all_features(tex_file, html_url=None, dry_run=False):
                 changes.append('add \\bookmarksetup{} configuration')
             if notice_modified:
                 changes.append('add accessibility notice section')
+            if alt_modified:
+                changes.append(f'add alt text hint comment to {alt_count} \\includegraphics instance(s)')
             print(f"[DRY RUN] {Path(tex_file).name} — {len(changes)} change(s) would be made:")
             for change in changes:
                 print(f"  + {change}")
         else:
             print(f"[DRY RUN] {Path(tex_file).name} — no changes needed (already compliant)")
+        for line_num in caption_issues:
+            print(f"  {SYM_WARN} Figure on line {line_num} has no \\caption — add a description for accessibility")
+        for line_num in table_caption_issues:
+            print(f"  {SYM_WARN} Table on line {line_num} has no \\caption — add a description for accessibility")
+        for line_num, color, snippet in color_issues:
+            print(f"  {SYM_WARN} Color-only text on line {line_num} (\\textcolor{{{color}}}{{...}}) — add \\textbf, \\textit, or other cue for colorblind accessibility")
         return True if modified else False
 
     # Write changes to disk
@@ -428,15 +599,44 @@ def add_all_features(tex_file, html_url=None, dry_run=False):
         try:
             with open(tex_file, 'w', encoding='utf-8') as f:
                 f.write(content)
+            if verbose:
+                if pkg_modified:
+                    pkgs = []
+                    if '\\usepackage{bookmark}' not in original_content:
+                        pkgs.append('bookmark')
+                    if '\\usepackage{enumitem}' not in original_content:
+                        pkgs.append('enumitem')
+                    for pkg in pkgs:
+                        print(f"  - Added package: {pkg}")
+                if url_modified:
+                    print(f"  - Wrapped plain URLs in \\url{{}}")
+                if bookmark_modified:
+                    print(f"  - Added \\bookmarksetup{{}} configuration")
+                if notice_modified:
+                    print(f"  - Added accessibility notice section")
+                if alt_modified:
+                    print(f"  - Added alt text hint to {alt_count} \\includegraphics instance(s)")
+            for line_num in caption_issues:
+                print(f"  {SYM_WARN} Figure on line {line_num} has no \\caption — add a description for accessibility")
+            for line_num in table_caption_issues:
+                print(f"  {SYM_WARN} Table on line {line_num} has no \\caption — add a description for accessibility")
+            for line_num, color, snippet in color_issues:
+                print(f"  {SYM_WARN} Color-only text on line {line_num} (\\textcolor{{{color}}}{{...}}) — add \\textbf, \\textit, or other cue for colorblind accessibility")
             return True
         except PermissionError:
-            print(f"❌ Error: Permission denied writing to {tex_file}")
+            print(f"{SYM_ERR} Error: Permission denied writing to {tex_file}")
             print("   Suggestion: Check file permissions or run with appropriate privileges")
             return None
         except Exception as e:
-            print(f"❌ Error writing to {tex_file}: {e}")
+            print(f"{SYM_ERR} Error writing to {tex_file}: {e}")
             return None
 
+    for line_num in caption_issues:
+        print(f"  {SYM_WARN} Figure on line {line_num} has no \\caption — add a description for accessibility")
+    for line_num in table_caption_issues:
+        print(f"  {SYM_WARN} Table on line {line_num} has no \\caption — add a description for accessibility")
+    for line_num, color, snippet in color_issues:
+        print(f"  {SYM_WARN} Color-only text on line {line_num} (\\textcolor{{{color}}}{{...}}) — add \\textbf, \\textit, or other cue for colorblind accessibility")
     return False
 
 
@@ -450,7 +650,7 @@ def fix_structure(tex_file, dry_run=False):
         with open(tex_file, 'r', encoding='utf-8') as f:
             content = f.read()
     except Exception as e:
-        print(f"❌ Error reading {tex_file}: {e}")
+        print(f"{SYM_ERR} Error reading {tex_file}: {e}")
         return None
 
     content, modified = fix_hypersetup_structure(content)
@@ -468,7 +668,7 @@ def fix_structure(tex_file, dry_run=False):
                 f.write(content)
             return True
         except Exception as e:
-            print(f"❌ Error writing to {tex_file}: {e}")
+            print(f"{SYM_ERR} Error writing to {tex_file}: {e}")
             return None
 
     return False
@@ -490,7 +690,7 @@ def validate_file(tex_file):
 
     # Check pdflatex is available
     if not subprocess.run(['which', 'pdflatex'], capture_output=True).returncode == 0:
-        print(f"❌ pdflatex not found — cannot validate")
+        print(f"{SYM_ERR} pdflatex not found — cannot validate")
         print(f"   Install LaTeX to enable validation")
         return None
 
@@ -506,10 +706,10 @@ def validate_file(tex_file):
         )
         success = result.returncode == 0
     except subprocess.TimeoutExpired:
-        print(f"❌ pdflatex timed out (>120 seconds)")
+        print(f"{SYM_ERR} pdflatex timed out (>120 seconds)")
         return False
     except Exception as e:
-        print(f"❌ Error running pdflatex: {e}")
+        print(f"{SYM_ERR} Error running pdflatex: {e}")
         return False
 
     # Parse the .log file for errors and warnings before cleaning up
@@ -547,7 +747,7 @@ def validate_file(tex_file):
     pdf_file = tex_path.with_suffix('.pdf')
 
     if success and pdf_file.exists():
-        print(f"✓ Compiled successfully — {pdf_file.name} generated")
+        print(f"{SYM_OK} Compiled successfully — {pdf_file.name} generated")
 
         # Check for accessibility features in the source
         try:
@@ -574,23 +774,23 @@ def validate_file(tex_file):
                 features.append('bookmarksetup')
 
             if features:
-                print(f"✓ Accessibility packages: {', '.join(features)}")
+                print(f"{SYM_OK} Accessibility packages: {', '.join(features)}")
             if missing:
-                print(f"⚠️  Missing accessibility packages: {', '.join(missing)}")
+                print(f"{SYM_WARN} Missing accessibility packages: {', '.join(missing)}")
                 print(f"   Run: python3 latex-accessibility.py add {tex_file}")
         except Exception:
             pass  # Accessibility check failure is non-fatal
 
         if warnings:
-            print(f"⚠️  {len(warnings)} layout warning(s) (overfull/underfull boxes)")
+            print(f"{SYM_WARN} {len(warnings)} layout warning(s) (overfull/underfull boxes)")
 
     else:
-        print(f"❌ Compilation failed")
+        print(f"{SYM_ERR} Compilation failed")
         if errors:
             print(f"\n  Errors:")
             for msg, line_num in errors:
                 location = f"line {line_num}: " if line_num else ""
-                print(f"  ❌ {location}{msg}")
+                print(f"  {SYM_ERR} Error: {location}{msg}")
         else:
             # No errors parsed but still failed — show raw pdflatex stderr
             if result.stderr.strip():
@@ -625,6 +825,10 @@ def check_file_accessibility(tex_file):
         'has_bookmarksetup': False,
         'has_notice': False,
         'has_accessibility_pkg': False,
+        'figures_without_caption': [],   # LAT2: line numbers
+        'tables_without_caption': [],    # LAT3: line numbers
+        'color_only_text': [],           # LAT4: (line_num, color, snippet) tuples
+        'graphics_without_hint': 0,      # LAT1: count
         'issues': [],
         'readable': True,
     }
@@ -643,6 +847,19 @@ def check_file_accessibility(tex_file):
     result['has_bookmarksetup'] = '\\bookmarksetup{' in content
     result['has_notice'] = 'Accessibility Notice' in content
     result['has_accessibility_pkg'] = '\\usepackage{accessibility}' in content
+
+    # LAT1: count \includegraphics without an alt text hint comment
+    _, _, graphics_without_hint = add_alt_text_hints(content)
+    result['graphics_without_hint'] = graphics_without_hint
+
+    # LAT2: figure environments missing \caption
+    result['figures_without_caption'] = check_figure_captions(content)
+
+    # LAT3: table environments missing \caption
+    result['tables_without_caption'] = check_table_captions(content)
+
+    # LAT4: color-only text without additional formatting cue
+    result['color_only_text'] = check_color_only_text(content)
 
     if not result['has_hyperref']:
         result['issues'].append('Missing `\\usepackage{hyperref}`')
@@ -748,6 +965,38 @@ def generate_report(directory, output_file=None, output_format='markdown'):
             lines.append(f'| {label} | {status} |')
         if r['has_accessibility_pkg']:
             lines.append('| `accessibility` package (optional) | ✅ Yes |')
+
+        # LAT1: alt text hints
+        gwh = r.get('graphics_without_hint', 0)
+        if gwh == 0:
+            lines.append('| `\\includegraphics` alt text hints | ✅ All present |')
+        else:
+            lines.append(f'| `\\includegraphics` alt text hints | ⚠️ {gwh} instance(s) missing hint |')
+
+        # LAT2: figure captions
+        fwc = r.get('figures_without_caption', [])
+        if not fwc:
+            lines.append('| Figure `\\caption` | ✅ All present |')
+        else:
+            locations = ', '.join(f'line {n}' for n in fwc)
+            lines.append(f'| Figure `\\caption` | ⚠️ Missing on {locations} |')
+
+        # LAT3: table captions
+        twc = r.get('tables_without_caption', [])
+        if not twc:
+            lines.append('| Table `\\caption` | ✅ All present |')
+        else:
+            locations = ', '.join(f'line {n}' for n in twc)
+            lines.append(f'| Table `\\caption` | ⚠️ Missing on {locations} |')
+
+        # LAT4: color-only text
+        cot = r.get('color_only_text', [])
+        if not cot:
+            lines.append('| Color-only text | ✅ None detected |')
+        else:
+            locations = ', '.join(f'line {ln}' for ln, _, _ in cot)
+            lines.append(f'| Color-only text | ⚠️ {len(cot)} instance(s) on {locations} |')
+
         lines.append('')
 
         if r['issues']:
@@ -812,12 +1061,12 @@ def generate_report(directory, output_file=None, output_format='markdown'):
                     check=True, capture_output=True
                 )
                 md_path.unlink()
-                print(f"✅ Report generated: {pdf_path}")
+                print(f"{SYM_DONE} Report generated: {pdf_path}")
             except subprocess.CalledProcessError:
-                print(f"⚠️  pandoc failed to produce PDF — report saved as Markdown instead:")
+                print(f"{SYM_WARN} pandoc failed to produce PDF — report saved as Markdown instead:")
                 print(f"   {md_path}")
         else:
-            print("⚠️  pandoc not found — report saved as Markdown instead.")
+            print(f"{SYM_WARN} pandoc not found — report saved as Markdown instead.")
             print("   To install pandoc: sudo apt-get install pandoc")
             print(f"   {md_path}")
     else:
@@ -832,14 +1081,14 @@ def generate_report(directory, output_file=None, output_format='markdown'):
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(markdown_content)
 
-        print(f"✅ Report generated: {output_path}")
+        print(f"{SYM_DONE} Report generated: {output_path}")
 
     # Terminal summary
     print(f"\nSummary: {len(compliant)}/{len(results)} files fully compliant")
     if non_compliant:
-        print(f"  ❌ {len(non_compliant)} file(s) need full accessibility features")
+        print(f"  {SYM_ERR} {len(non_compliant)} file(s) need full accessibility features")
     if partial:
-        print(f"  ⚠️  {len(partial)} file(s) need partial fixes")
+        print(f"  {SYM_WARN} {len(partial)} file(s) need partial fixes")
     if not non_compliant and not partial:
         print("  All files meet accessibility requirements.")
 
@@ -861,7 +1110,7 @@ def process_directory(directory, command, use_progress=False, dry_run=False):
     def process_file(tex_file):
         """Run the appropriate command on one file, return result."""
         if command == 'add-all':
-            return add_all_features(tex_file, dry_run=dry_run)
+            return add_all_features(tex_file, dry_run=dry_run, verbose=_VERBOSE)
         elif command == 'fix-all':
             return fix_structure(tex_file, dry_run=dry_run)
 
@@ -870,17 +1119,17 @@ def process_directory(directory, command, use_progress=False, dry_run=False):
         nonlocal modified_count, skipped_count, error_count
         if result is True:
             modified_count += 1
-            return "✓ modified"
+            return f"{SYM_OK} modified"
         elif result is None:
             error_count += 1
-            return "❌ error"
+            return f"{SYM_ERR} error"
         else:
             skipped_count += 1
-            return "○ already compliant"
+            return f"{SYM_SKIP} already compliant"
 
     if use_progress:
         if not HAS_TQDM:
-            print("⚠️  tqdm not installed — falling back to verbose output.")
+            print(f"{SYM_WARN} tqdm not installed — falling back to verbose output.")
             print("   To install: pip install tqdm\n")
             use_progress = False
 
@@ -896,7 +1145,7 @@ def process_directory(directory, command, use_progress=False, dry_run=False):
                 status = label_result(result, tex_file)
                 # Errors still get a visible message above the bar
                 if result is None:
-                    tqdm.write(f"  ❌ Error processing {tex_file.name}")
+                    tqdm.write(f"  {SYM_ERR} Error processing {tex_file.name}")
                 bar.set_postfix_str(status)
     else:
         # Verbose per-file mode (default)
@@ -914,27 +1163,178 @@ def process_directory(directory, command, use_progress=False, dry_run=False):
     if dry_run:
         print(f"[DRY RUN] {total} file(s) analysed — no files written")
     else:
-        print(f"✓ Processed {total} file(s)")
+        print(f"{SYM_OK} Processed {total} file(s)")
     print(f"  {action_word}: {modified_count}")
     print(f"  Skipped:   {skipped_count} (already compliant)")
     print(f"  Errors:    {error_count}")
 
 
+def _wizard_prompt(question, default=None, choices=None):
+    """Print a prompt and return stripped input. Ctrl-C exits cleanly."""
+    if choices:
+        options = '/'.join(
+            c.upper() if c == default else c
+            for c in choices
+        )
+        question = f"{question} [{options}]"
+    elif default is not None:
+        question = f"{question} [{default}]"
+    question += ": "
+    try:
+        answer = input(question).strip()
+    except (KeyboardInterrupt, EOFError):
+        print("\nWizard cancelled.")
+        sys.exit(0)
+    if not answer and default is not None:
+        return default
+    return answer
+
+
+def run_wizard():
+    """Interactive step-by-step wizard for making LaTeX files accessible."""
+    divider = "─" * 50
+
+    print(divider)
+    print("  LaTeX Accessibility Wizard")
+    print(divider)
+    print("Answer each question — press Enter to accept the default shown in [ ].")
+    print("Press Ctrl-C at any time to cancel.\n")
+
+    # ── Step 1: file or directory ────────────────────────────────────────────
+    print("Step 1: What do you want to process?")
+    mode = _wizard_prompt("  (f) a single file, or (d) a whole directory", default='f', choices=['f', 'd'])
+    mode = mode.lower()
+
+    if mode == 'f':
+        path_label = "Path to .tex file"
+    else:
+        path_label = "Path to directory containing .tex files"
+
+    print()
+    print(f"Step 2: {path_label}")
+    while True:
+        target = _wizard_prompt("  Path", default='.')
+        target_path = Path(target)
+        if mode == 'f':
+            if not target_path.exists():
+                print(f"  {SYM_ERR} File not found: {target}")
+            elif not str(target).endswith('.tex'):
+                print(f"  {SYM_WARN} That doesn't look like a .tex file — continue anyway?")
+                confirm = _wizard_prompt("  ", default='n', choices=['y', 'n'])
+                if confirm.lower() == 'y':
+                    break
+            else:
+                break
+        else:
+            if not target_path.exists() or not target_path.is_dir():
+                print(f"  {SYM_ERR} Directory not found: {target}")
+            else:
+                tex_files = sorted(target_path.glob('*.tex'))
+                if not tex_files:
+                    print(f"  {SYM_WARN} No .tex files found in {target}")
+                else:
+                    print(f"  Found {len(tex_files)} .tex file(s)")
+                    break
+
+    # ── Step 3: HTML URL ─────────────────────────────────────────────────────
+    print()
+    print("Step 3: HTML URL for the accessibility notice")
+    print("  This is the web address where the accessible HTML version will live.")
+    print("  Leave blank to auto-generate from the file path.")
+    html_url = _wizard_prompt("  HTML URL", default='')
+    if not html_url:
+        html_url = None
+        print(f"  {SYM_SKIP} URL will be auto-generated")
+
+    # ── Step 4: preview ──────────────────────────────────────────────────────
+    print()
+    print("Step 4: Preview changes before applying?")
+    show_preview = _wizard_prompt("  Show dry-run preview", default='y', choices=['y', 'n'])
+
+    if show_preview.lower() == 'y':
+        print()
+        print(divider)
+        print("  Preview (no files will be written)")
+        print(divider)
+        if mode == 'f':
+            add_all_features(target, html_url=html_url, dry_run=True)
+        else:
+            for tex_file in sorted(Path(target).glob('*.tex')):
+                add_all_features(str(tex_file), html_url=html_url, dry_run=True)
+        print(divider)
+
+    # ── Step 5: confirm and apply ────────────────────────────────────────────
+    print()
+    apply = _wizard_prompt("Apply changes?", default='y', choices=['y', 'n'])
+
+    if apply.lower() != 'y':
+        print("No changes made.")
+        sys.exit(0)
+
+    print()
+    print(divider)
+    print("  Applying changes")
+    print(divider)
+
+    if mode == 'f':
+        result = add_all_features(target, html_url=html_url, verbose=_VERBOSE)
+        if result is True:
+            print(f"{SYM_OK} Added accessibility features to {target}")
+        elif result is False:
+            print(f"{SYM_SKIP} {target} already has accessibility features")
+        else:
+            print(f"{SYM_ERR} Could not process {target}")
+    else:
+        tex_files = sorted(Path(target).glob('*.tex'))
+        modified = skipped = errors = 0
+        for tex_file in tex_files:
+            result = add_all_features(str(tex_file), html_url=html_url, verbose=_VERBOSE)
+            if result is True:
+                print(f"  {SYM_OK} {tex_file.name}")
+                modified += 1
+            elif result is False:
+                print(f"  {SYM_SKIP} {tex_file.name} (already compliant)")
+                skipped += 1
+            else:
+                print(f"  {SYM_ERR} {tex_file.name} (error)")
+                errors += 1
+        print(divider)
+        print(f"{SYM_DONE} Processed {len(tex_files)} file(s)")
+        print(f"  Modified: {modified}")
+        print(f"  Skipped:  {skipped} (already compliant)")
+        if errors:
+            print(f"  Errors:   {errors}")
+
+    # ── Step 6: generate report ──────────────────────────────────────────────
+    if mode == 'd':
+        print()
+        want_report = _wizard_prompt("Generate an accessibility compliance report?", default='y', choices=['y', 'n'])
+        if want_report.lower() == 'y':
+            generate_report(target)
+
+
 def main():
+    def show_help():
+        print(__doc__.format(version=__version__))
+
     if len(sys.argv) < 2:
-        print(__doc__)
-        sys.exit(1)
+        show_help()
+        sys.exit(0)
 
     command = sys.argv[1]
 
-    # Handle --version flag
+    # Handle --version and --help flags
     if command in ['--version', '-v']:
         print(f"LaTeX Accessibility Tool v{__version__}")
         sys.exit(0)
 
+    if command in ['--help', '-h']:
+        show_help()
+        sys.exit(0)
+
     if command in ['add', 'fix']:
         if len(sys.argv) < 3:
-            print(f"❌ Error: Missing file argument")
+            print(f"{SYM_ERR} Error: Missing file argument")
             print(f"\nUsage: {sys.argv[0]} {command} <file.tex>")
             print(f"\nExample: {sys.argv[0]} {command} mylab.tex")
             sys.exit(1)
@@ -942,7 +1342,7 @@ def main():
         tex_file = sys.argv[2]
 
         if not Path(tex_file).exists():
-            print(f"❌ Error: File not found: {tex_file}")
+            print(f"{SYM_ERR} Error: File not found: {tex_file}")
             print(f"\nSuggestions:")
             print(f"  • Check the file path is correct")
             print(f"  • Make sure you're in the right directory")
@@ -960,7 +1360,7 @@ def main():
             sys.exit(1)
 
         if not str(tex_file).endswith('.tex'):
-            print(f"⚠️  Warning: {tex_file} doesn't have .tex extension")
+            print(f"{SYM_WARN} Warning: {tex_file} doesn't have .tex extension")
             print(f"   This tool is designed for LaTeX files (.tex)")
             response = input("Continue anyway? (y/n): ")
             if response.lower() != 'y':
@@ -969,23 +1369,23 @@ def main():
         dry_run = '--dry-run' in sys.argv
 
         if command == 'add':
-            result = add_all_features(tex_file, dry_run=dry_run)
+            result = add_all_features(tex_file, dry_run=dry_run, verbose=_VERBOSE)
             if not dry_run:
                 if result is True:
-                    print(f"✓ Added accessibility features to {tex_file}")
+                    print(f"{SYM_OK} Added accessibility features to {tex_file}")
                 elif result is False:
-                    print(f"○ {tex_file} already has accessibility features")
+                    print(f"{SYM_SKIP} {tex_file} already has accessibility features")
         elif command == 'fix':
             result = fix_structure(tex_file, dry_run=dry_run)
             if not dry_run:
                 if result is True:
-                    print(f"✓ Fixed structure in {tex_file}")
+                    print(f"{SYM_OK} Fixed structure in {tex_file}")
                 elif result is False:
-                    print(f"○ {tex_file} structure OK")
+                    print(f"{SYM_SKIP} {tex_file} structure OK")
 
     elif command in ['add-all', 'fix-all']:
         if len(sys.argv) < 3:
-            print(f"❌ Error: Missing directory argument")
+            print(f"{SYM_ERR} Error: Missing directory argument")
             print(f"\nUsage: {sys.argv[0]} {command} <directory>")
             print(f"\nExample: {sys.argv[0]} {command} IntroLinux/labs")
             sys.exit(1)
@@ -993,14 +1393,14 @@ def main():
         directory = sys.argv[2]
 
         if not Path(directory).exists():
-            print(f"❌ Error: Directory not found: {directory}")
+            print(f"{SYM_ERR} Error: Directory not found: {directory}")
             print(f"\nSuggestions:")
             print(f"  • Check the directory path is correct")
             print(f"  • Use 'ls' to see available directories")
             sys.exit(1)
 
         if not Path(directory).is_dir():
-            print(f"❌ Error: {directory} is not a directory")
+            print(f"{SYM_ERR} Error: {directory} is not a directory")
             print(f"   Use '{command.replace('-all', '')}' for single files")
             sys.exit(1)
 
@@ -1010,14 +1410,14 @@ def main():
 
     elif command == 'validate':
         if len(sys.argv) < 3:
-            print(f"❌ Error: Missing file argument")
+            print(f"{SYM_ERR} Error: Missing file argument")
             print(f"\nUsage: {sys.argv[0]} validate <file.tex>")
             sys.exit(1)
 
         tex_file = sys.argv[2]
 
         if not Path(tex_file).exists():
-            print(f"❌ Error: File not found: {tex_file}")
+            print(f"{SYM_ERR} Error: File not found: {tex_file}")
             sys.exit(1)
 
         result = validate_file(tex_file)
@@ -1025,14 +1425,14 @@ def main():
 
     elif command == 'validate-all':
         if len(sys.argv) < 3:
-            print(f"❌ Error: Missing directory argument")
+            print(f"{SYM_ERR} Error: Missing directory argument")
             print(f"\nUsage: {sys.argv[0]} validate-all <directory>")
             sys.exit(1)
 
         directory = Path(sys.argv[2])
 
         if not directory.exists() or not directory.is_dir():
-            print(f"❌ Error: Directory not found: {sys.argv[2]}")
+            print(f"{SYM_ERR} Error: Directory not found: {sys.argv[2]}")
             sys.exit(1)
 
         tex_files = sorted(directory.glob('*.tex'))
@@ -1058,7 +1458,7 @@ def main():
             print()
 
         print(f"{'─' * 40}")
-        print(f"✓ Validated {total} file(s)")
+        print(f"{SYM_OK} Validated {total} file(s)")
         print(f"  Passed:  {passed}")
         print(f"  Failed:  {failed}")
         if unavailable:
@@ -1067,14 +1467,14 @@ def main():
 
     elif command == 'report':
         if len(sys.argv) < 3:
-            print(f"❌ Error: Missing directory argument")
+            print(f"{SYM_ERR} Error: Missing directory argument")
             print(f"\nUsage: {sys.argv[0]} report <directory> [--output=file] [--format=markdown|pdf]")
             sys.exit(1)
 
         directory = sys.argv[2]
 
         if not Path(directory).exists() or not Path(directory).is_dir():
-            print(f"❌ Error: Directory not found: {directory}")
+            print(f"{SYM_ERR} Error: Directory not found: {directory}")
             sys.exit(1)
 
         output_file   = None
@@ -1086,7 +1486,7 @@ def main():
             elif arg.startswith('--format='):
                 output_format = arg.split('=', 1)[1]
                 if output_format not in ('markdown', 'pdf'):
-                    print(f"❌ Error: Unknown format '{output_format}'")
+                    print(f"{SYM_ERR} Error: Unknown format '{output_format}'")
                     print(f"   Valid formats: markdown, pdf")
                     sys.exit(1)
 
@@ -1097,12 +1497,14 @@ def main():
         success = check_latex_packages()
         sys.exit(0 if success else 1)
 
+    elif command in ('wizard', 'interactive'):
+        run_wizard()
+
     else:
-        print(f"❌ Error: Unknown command: {command}")
-        print(f"\nValid commands: add, fix, add-all, fix-all, validate, validate-all, report, check-packages")
+        print(f"{SYM_ERR} Error: Unknown command: {command}")
+        print(f"\nValid commands: add, fix, add-all, fix-all, validate, validate-all, report, check-packages, wizard")
         print(f"Add --dry-run to add/fix/add-all/fix-all to preview changes without writing files.")
         print(f"\nFor help, run: {sys.argv[0]} --help")
-        print(__doc__)
         sys.exit(1)
 
 

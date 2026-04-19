@@ -9,6 +9,27 @@ Both tools use [Semantic Versioning](https://semver.org/): MAJOR.MINOR.PATCH.
 
 ## latex-accessibility.py
 
+### [1.2.0] — 2026-04-19
+
+#### Added
+- `--help` / `-h` flag — structured help output with a COMMANDS table, FLAGS table, EXAMPLES section, and summaries of what `add` does automatically vs. warns about. Version number is interpolated into the help text automatically. Running with no arguments now shows help instead of an error.
+
+- `wizard` command (also accepts `interactive`) — step-by-step guided mode that asks for file/directory, HTML URL, shows a dry-run preview, and confirms before applying. No extra libraries required. Ctrl-C cancels cleanly at any step. Offers to generate a compliance report at the end (directory mode).
+- `--verbose` flag for `add` and `add-all` — prints a detail line for each individual change made per file (packages added, notice added, URLs wrapped, alt text hints added). Compatible with `--plain`.
+- `--plain` flag — replaces all emoji status symbols with bracketed text equivalents (`[OK]`, `[SKIP]`, `[WARN]`, `[ERR]`, `[DONE]`) for screen reader users and scripting. Detected before any output so the whole run is consistent.
+- LAT1: `add_alt_text_hints()` — automatically inserts `% Alt text: [Add description here for accessibility]` after any `\includegraphics` line that does not already have one. Reports count in dry-run and verbose output.
+- LAT2: `check_figure_captions()` — detects `\begin{figure}` environments missing `\caption` and warns with the accurate source-file line number. Advisory only — never modifies files.
+- LAT3: `check_table_captions()` — detects `\begin{table}` environments missing `\caption` and warns with the accurate source-file line number. Handles `table*`. Advisory only.
+- LAT4: `check_color_only_text()` — detects `\textcolor{}{}` usage where the text has no secondary formatting cue (`\textbf`, `\textit`, `\emph`, `\underline`, `\textsc`, `\textsf`, `\texttt`). Advisory only.
+- LAT1–4 results included in `check_file_accessibility()` result dict and rendered in `generate_report()` Markdown output.
+- ACC1: All emoji in terminal output audited — added explicit text status words where emoji was the sole indicator of meaning (package install/missing lines, parsed LaTeX error prefix).
+
+#### Fixed
+- `add_accessibility_notice()`: `re.sub` replacement string crash when the accessibility notice contains LaTeX backslash commands (e.g. `\section*`, `\url`). Fixed by using a lambda replacement instead of a string, preventing Python from misinterpreting `\s` as a regex escape sequence.
+- Advisory checks (`check_figure_captions`, `check_table_captions`, `check_color_only_text`) now run against `original_content` so reported line numbers match the source file, not the post-transformation content.
+
+---
+
 ### [1.1.0] — 2026-04-18
 
 #### Added

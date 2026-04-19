@@ -4,6 +4,89 @@ Tools to make LaTeX documents accessible and convert them to clean, accessible H
 
 ---
 
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [What to Run When](#what-to-run-when)
+  - [Accessible PDF](#accessible-pdf-latex-accessibilitypy--pdflatex)
+  - [Accessible HTML](#accessible-html-tex-to-htmlpy)
+  - [Both PDF and HTML at once](#both-pdf-and-html-at-once-update-tex-outputssh)
+- [Full Workflow: New Lab File](#full-workflow-new-lab-file)
+- [What `add` Does Automatically](#what-add-does-automatically)
+- [What `add` Warns About](#what-add-warns-about-requires-manual-fix)
+- [Examples](#examples)
+  - [Before and After](#before-and-after-making-a-latex-file-accessible)
+  - [Dry Run Output](#dry-run-output)
+  - [Verbose Output](#verbose-output)
+  - [Fixing a Broken Structure](#fixing-a-broken-structure)
+  - [HTML Table Conversion](#html-conversion-latex-table--accessible-html-table)
+  - [HTML Document Structure](#html-conversion-document-structure)
+- [HTML Conversion Details](#html-conversion-details)
+- [Troubleshooting](#troubleshooting)
+- [Requirements](#requirements)
+- [Files](#files)
+
+---
+
+## Quick Start
+
+**Never used this before? Start here.**
+
+### Step 1 — Install requirements
+
+```bash
+# LaTeX (for PDF generation)
+sudo apt-get install texlive-latex-base texlive-fonts-recommended
+
+# Python 3 is usually already installed — check with:
+python3 --version
+```
+
+See [INSTALL.md](INSTALL.md) for macOS, Windows, and optional tools.
+
+### Step 2 — Make a single file accessible
+
+```bash
+python3 latex-accessibility.py add myfile.tex
+```
+
+That's it. The tool adds the missing packages, PDF bookmark configuration, accessibility notice, and URL formatting automatically.
+
+Not sure what it will change? Preview first with no files written:
+
+```bash
+python3 latex-accessibility.py add myfile.tex --dry-run
+```
+
+### Step 3 — Convert to HTML
+
+```bash
+python3 tex-to-html.py myfile.tex
+```
+
+### Prefer a guided experience?
+
+Run the wizard — it asks you everything and shows a preview before making any changes:
+
+```bash
+python3 latex-accessibility.py wizard
+```
+
+### Processing a whole directory?
+
+```bash
+# Preview first
+python3 latex-accessibility.py add-all labs/ --dry-run
+
+# Apply to all files
+python3 latex-accessibility.py add-all labs/
+
+# Get a written compliance report
+python3 latex-accessibility.py report labs/
+```
+
+---
+
 ## What to Run When
 
 ### Accessible PDF (`latex-accessibility.py` → `pdflatex`)

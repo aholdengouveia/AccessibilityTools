@@ -15,6 +15,11 @@ COMMANDS
   report <directory>            Generate a Markdown accessibility compliance report
   check-packages                Check whether LaTeX and required packages are installed
 
+  check-html <file.html>        Audit an HTML file for WCAG 2.1 AA issues (requires pa11y)
+  check-html-all <directory>    Audit all HTML files in a directory
+  check-pdf <file.pdf>          Audit a PDF file for PDF/UA compliance (requires veraPDF)
+  check-pdf-all <directory>     Audit all PDF files in a directory
+
 FLAGS (work with most commands)
   --dry-run                     Show what would change without writing any files
   --verbose                     Print each individual change made per file
@@ -58,6 +63,14 @@ EXAMPLES
   Use without emoji (for screen readers or CI scripts):
     python3 latex-accessibility.py add-all labs/ --plain
 
+  Check generated HTML for WCAG accessibility issues:
+    python3 latex-accessibility.py check-html myfile.html
+    python3 latex-accessibility.py check-html-all labs/
+
+  Check generated PDF for PDF/UA compliance:
+    python3 latex-accessibility.py check-pdf myfile.pdf
+    python3 latex-accessibility.py check-pdf-all labs/
+
 WHAT 'add' DOES AUTOMATICALLY
   - Adds \usepackage{{bookmark}} and \usepackage{{enumitem}} if missing
   - Adds \bookmarksetup{{}} configuration for PDF navigation
@@ -74,7 +87,7 @@ WHAT 'add' WARNS ABOUT (requires manual fix in the source file)
 For full documentation see README.md or INSTALL.md.
 """
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 import sys
 import re
@@ -887,6 +900,265 @@ def _compliance_level(file_result):
         return 'non-compliant'
 
 
+def _find_pa11y():
+    """Return the pa11y executable path, or None if not found."""
+    for candidate in ['pa11y', 'npx pa11y']:
+        result = subprocess.run(
+            ['which', candidate.split()[0]], capture_output=True
+        )
+        if result.returncode == 0:
+            return candidate
+    return None
+
+
+def _find_verapdf():
+    """Return the verapdf executable path, or None if not found."""
+    result = subprocess.run(['which', 'verapdf'], capture_output=True)
+    if result.returncode == 0:
+        return 'verapdf'
+    return None
+
+
+def check_html_accessibility(html_file, report_file=None):
+    """
+    Run a WCAG accessibility audit on an HTML file using pa11y.
+
+    Returns a dict with keys: file, tool, critical, serious, moderate, minor,
+    issues (list of dicts), tool_missing (bool), error (str or None).
+    Writes a Markdown report to report_file if provided.
+    """
+    html_path = Path(html_file)
+    result = {
+        'file': html_path.name,
+        'path': str(html_path),
+        'tool': 'pa11y',
+        'critical': 0, 'serious': 0, 'moderate': 0, 'minor': 0,
+        'issues': [],
+        'tool_missing': False,
+        'error': None,
+    }
+
+    pa11y = _find_pa11y()
+    if not pa11y:
+        result['tool_missing'] = True
+        result['error'] = 'pa11y not found'
+        print(f"{SYM_ERR} pa11y is not installed — cannot check HTML accessibility")
+        print(f"   Install with: npm install -g pa11y")
+        print(f"   (requires Node.js — https://nodejs.org)")
+        return result
+
+    if not html_path.exists():
+        result['error'] = f"File not found: {html_file}"
+        print(f"{SYM_ERR} File not found: {html_file}")
+        return result
+
+    print(f"Checking {html_path.name} for WCAG 2.1 AA compliance (pa11y)...")
+
+    try:
+        proc = subprocess.run(
+            [pa11y, '--reporter', 'json', str(html_path)],
+            capture_output=True, text=True, timeout=60
+        )
+        import json
+        raw = proc.stdout.strip()
+        if not raw:
+            raw = '[]'
+        issues = json.loads(raw)
+    except subprocess.TimeoutExpired:
+        result['error'] = 'pa11y timed out'
+        print(f"{SYM_ERR} pa11y timed out after 60 seconds")
+        return result
+    except Exception as e:
+        result['error'] = str(e)
+        print(f"{SYM_ERR} Error running pa11y: {e}")
+        return result
+
+    severity_map = {'error': 'critical', 'warning': 'moderate', 'notice': 'minor'}
+    for issue in issues:
+        severity = severity_map.get(issue.get('type', ''), 'minor')
+        result[severity] += 1
+        result['issues'].append({
+            'severity': severity,
+            'message': issue.get('message', ''),
+            'selector': issue.get('selector', ''),
+            'context': issue.get('context', ''),
+        })
+
+    total = len(issues)
+    if result['critical'] == 0 and result['serious'] == 0:
+        print(f"  {SYM_OK} No critical or serious issues ({total} total)")
+    else:
+        if result['critical']:
+            print(f"  {SYM_ERR} {result['critical']} critical issue(s)")
+        if result['serious']:
+            print(f"  {SYM_WARN} {result['serious']} serious issue(s)")
+        if result['moderate']:
+            print(f"  {SYM_WARN} {result['moderate']} moderate issue(s)")
+        if result['minor']:
+            print(f"  {SYM_SKIP} {result['minor']} minor issue(s)")
+
+    for issue in result['issues']:
+        sev = issue['severity'].upper()
+        print(f"    [{sev}] {issue['message']}")
+        if issue.get('selector'):
+            print(f"           Selector: {issue['selector']}")
+
+    if report_file:
+        _write_html_report(result, report_file)
+
+    return result
+
+
+def _write_html_report(result, report_file):
+    """Write an HTML accessibility check result to a Markdown file."""
+    lines = [
+        f"# HTML Accessibility Report: {result['file']}",
+        '',
+        f"**Tool:** pa11y (WCAG 2.1 AA)  ",
+        f"**File:** `{result['path']}`  ",
+        f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        '',
+        '## Summary',
+        '',
+        f"| Severity | Count |",
+        f"|----------|-------|",
+        f"| Critical | {result['critical']} |",
+        f"| Serious  | {result['serious']} |",
+        f"| Moderate | {result['moderate']} |",
+        f"| Minor    | {result['minor']} |",
+        '',
+    ]
+    if result['issues']:
+        lines += ['## Issues', '']
+        for issue in result['issues']:
+            lines.append(f"**[{issue['severity'].upper()}]** {issue['message']}")
+            if issue.get('selector'):
+                lines.append(f"- Selector: `{issue['selector']}`")
+            if issue.get('context'):
+                lines.append(f"- Context: `{issue['context'][:120]}`")
+            lines.append('')
+    else:
+        lines += ['## Issues', '', '✅ No issues found.', '']
+
+    Path(report_file).write_text('\n'.join(lines), encoding='utf-8')
+    print(f"  {SYM_DONE} Report saved: {report_file}")
+
+
+def check_pdf_accessibility(pdf_file, report_file=None):
+    """
+    Run a PDF/UA accessibility audit on a PDF file using veraPDF.
+
+    Returns a dict with keys: file, tool, passed, failed, warnings,
+    failures (list of dicts), tool_missing (bool), error (str or None).
+    Writes a Markdown report to report_file if provided.
+    """
+    pdf_path = Path(pdf_file)
+    result = {
+        'file': pdf_path.name,
+        'path': str(pdf_path),
+        'tool': 'veraPDF',
+        'passed': 0, 'failed': 0, 'warnings': 0,
+        'failures': [],
+        'tool_missing': False,
+        'error': None,
+    }
+
+    verapdf = _find_verapdf()
+    if not verapdf:
+        result['tool_missing'] = True
+        result['error'] = 'veraPDF not found'
+        print(f"{SYM_ERR} veraPDF is not installed — cannot check PDF accessibility")
+        print(f"   Download from: https://verapdf.org/download")
+        print(f"   (requires Java — install with: sudo apt-get install default-jre)")
+        return result
+
+    if not pdf_path.exists():
+        result['error'] = f"File not found: {pdf_file}"
+        print(f"{SYM_ERR} File not found: {pdf_file}")
+        return result
+
+    print(f"Checking {pdf_path.name} for PDF/UA compliance (veraPDF)...")
+
+    try:
+        proc = subprocess.run(
+            [verapdf, '--format', 'xml', str(pdf_path)],
+            capture_output=True, text=True, timeout=120
+        )
+        xml_output = proc.stdout
+    except subprocess.TimeoutExpired:
+        result['error'] = 'veraPDF timed out'
+        print(f"{SYM_ERR} veraPDF timed out after 120 seconds")
+        return result
+    except Exception as e:
+        result['error'] = str(e)
+        print(f"{SYM_ERR} Error running veraPDF: {e}")
+        return result
+
+    # Parse XML output
+    try:
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(xml_output)
+        for rule in root.iter('rule'):
+            passed = int(rule.get('passed', 0))
+            failed = int(rule.get('failed', 0))
+            result['passed'] += passed
+            result['failed'] += failed
+            if failed:
+                result['failures'].append({
+                    'clause': rule.get('clause', ''),
+                    'test_number': rule.get('testNumber', ''),
+                    'description': rule.get('description', ''),
+                    'count': failed,
+                })
+    except Exception as e:
+        result['error'] = f"Could not parse veraPDF output: {e}"
+        print(f"{SYM_ERR} Could not parse veraPDF output: {e}")
+        return result
+
+    if result['failed'] == 0:
+        print(f"  {SYM_OK} PDF/UA compliant — {result['passed']} rule(s) passed")
+    else:
+        print(f"  {SYM_ERR} {result['failed']} failure(s), {result['passed']} passed")
+        for f in result['failures']:
+            clause = f"clause {f['clause']}" if f['clause'] else ''
+            print(f"    {SYM_ERR} {clause}: {f['description']} ({f['count']} instance(s))")
+
+    if report_file:
+        _write_pdf_report(result, report_file)
+
+    return result
+
+
+def _write_pdf_report(result, report_file):
+    """Write a PDF accessibility check result to a Markdown file."""
+    lines = [
+        f"# PDF Accessibility Report: {result['file']}",
+        '',
+        f"**Tool:** veraPDF (PDF/UA-1)  ",
+        f"**File:** `{result['path']}`  ",
+        f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        '',
+        '## Summary',
+        '',
+        f"| Result | Count |",
+        f"|--------|-------|",
+        f"| Passed | {result['passed']} |",
+        f"| Failed | {result['failed']} |",
+        '',
+    ]
+    if result['failures']:
+        lines += ['## Failures', '']
+        for f in result['failures']:
+            clause = f"Clause {f['clause']}" if f['clause'] else 'Unknown clause'
+            lines.append(f"**{clause}:** {f['description']} — {f['count']} instance(s)")
+            lines.append('')
+    else:
+        lines += ['## Failures', '', '✅ No failures — PDF/UA compliant.', '']
+
+    Path(report_file).write_text('\n'.join(lines), encoding='utf-8')
+    print(f"  {SYM_DONE} Report saved: {report_file}")
+
+
 def generate_report(directory, output_file=None, output_format='markdown'):
     """
     Generate a Markdown (default) or PDF accessibility compliance report
@@ -1500,9 +1772,101 @@ def main():
     elif command in ('wizard', 'interactive'):
         run_wizard()
 
+    elif command == 'check-html':
+        if len(sys.argv) < 3:
+            print(f"{SYM_ERR} Error: Missing file argument")
+            print(f"\nUsage: {sys.argv[0]} check-html <file.html>")
+            sys.exit(1)
+        html_file = sys.argv[2]
+        output_arg = next((a for a in sys.argv[3:] if a.startswith('--output=')), None)
+        report_file = output_arg.split('=', 1)[1] if output_arg else None
+        result = check_html_accessibility(html_file, report_file=report_file)
+        sys.exit(0 if not result.get('error') and result['critical'] == 0 and result['serious'] == 0 else 1)
+
+    elif command == 'check-html-all':
+        if len(sys.argv) < 3:
+            print(f"{SYM_ERR} Error: Missing directory argument")
+            print(f"\nUsage: {sys.argv[0]} check-html-all <directory>")
+            sys.exit(1)
+        directory = Path(sys.argv[2])
+        if not directory.exists() or not directory.is_dir():
+            print(f"{SYM_ERR} Error: Directory not found: {sys.argv[2]}")
+            sys.exit(1)
+        html_files = sorted(directory.glob('*.html'))
+        if not html_files:
+            print(f"No .html files found in {directory}")
+            sys.exit(0)
+        print(f"Checking {len(html_files)} HTML file(s) in {directory}\n")
+        passed = failed = skipped = 0
+        for i, html_file in enumerate(html_files, 1):
+            print(f"[{i}/{len(html_files)}] ", end='', flush=True)
+            r = check_html_accessibility(str(html_file))
+            if r.get('tool_missing'):
+                sys.exit(1)
+            if r.get('error'):
+                skipped += 1
+            elif r['critical'] == 0 and r['serious'] == 0:
+                passed += 1
+            else:
+                failed += 1
+            print()
+        print('─' * 50)
+        print(f"{SYM_DONE} Checked {len(html_files)} file(s)")
+        print(f"  Passed:  {passed}")
+        print(f"  Issues:  {failed}")
+        if skipped:
+            print(f"  Skipped: {skipped}")
+        sys.exit(0 if failed == 0 else 1)
+
+    elif command == 'check-pdf':
+        if len(sys.argv) < 3:
+            print(f"{SYM_ERR} Error: Missing file argument")
+            print(f"\nUsage: {sys.argv[0]} check-pdf <file.pdf>")
+            sys.exit(1)
+        pdf_file = sys.argv[2]
+        output_arg = next((a for a in sys.argv[3:] if a.startswith('--output=')), None)
+        report_file = output_arg.split('=', 1)[1] if output_arg else None
+        result = check_pdf_accessibility(pdf_file, report_file=report_file)
+        sys.exit(0 if not result.get('error') and result['failed'] == 0 else 1)
+
+    elif command == 'check-pdf-all':
+        if len(sys.argv) < 3:
+            print(f"{SYM_ERR} Error: Missing directory argument")
+            print(f"\nUsage: {sys.argv[0]} check-pdf-all <directory>")
+            sys.exit(1)
+        directory = Path(sys.argv[2])
+        if not directory.exists() or not directory.is_dir():
+            print(f"{SYM_ERR} Error: Directory not found: {sys.argv[2]}")
+            sys.exit(1)
+        pdf_files = sorted(directory.glob('*.pdf'))
+        if not pdf_files:
+            print(f"No .pdf files found in {directory}")
+            sys.exit(0)
+        print(f"Checking {len(pdf_files)} PDF file(s) in {directory}\n")
+        passed = failed = skipped = 0
+        for i, pdf_file in enumerate(pdf_files, 1):
+            print(f"[{i}/{len(pdf_files)}] ", end='', flush=True)
+            r = check_pdf_accessibility(str(pdf_file))
+            if r.get('tool_missing'):
+                sys.exit(1)
+            if r.get('error'):
+                skipped += 1
+            elif r['failed'] == 0:
+                passed += 1
+            else:
+                failed += 1
+            print()
+        print('─' * 50)
+        print(f"{SYM_DONE} Checked {len(pdf_files)} file(s)")
+        print(f"  Passed:  {passed}")
+        print(f"  Issues:  {failed}")
+        if skipped:
+            print(f"  Skipped: {skipped}")
+        sys.exit(0 if failed == 0 else 1)
+
     else:
         print(f"{SYM_ERR} Error: Unknown command: {command}")
-        print(f"\nValid commands: add, fix, add-all, fix-all, validate, validate-all, report, check-packages, wizard")
+        print(f"\nValid commands: add, fix, add-all, fix-all, validate, validate-all, report, check-packages, wizard, check-html, check-html-all, check-pdf, check-pdf-all")
         print(f"Add --dry-run to add/fix/add-all/fix-all to preview changes without writing files.")
         print(f"\nFor help, run: {sys.argv[0]} --help")
         sys.exit(1)

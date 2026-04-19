@@ -11,23 +11,6 @@ Tracking improvements and enhancements for the LaTeX accessibility toolkit.
 
 # 📋 TODO
 
-## ⭐ Quick Wins (Easy, High Impact)
-_These can be done quickly and provide immediate value_
-
-### QW4. Add --help Text with Examples ✅ DONE
-**Effort:** 🟢 Low (15 min) | **Impact:** Better discoverability
-
-Replaced module docstring with structured help: COMMANDS table, FLAGS table, EXAMPLES section, and summaries of what `add` does automatically vs warns about. Running with no arguments now shows help instead of an error. `-h` added as alias for `--help`.
-
----
-
-### QW5. Add Troubleshooting Section to README ✅ DONE
-**Effort:** 🟢 Low (20 min) | **Impact:** Reduces support questions
-
-Added Troubleshooting section to README.md covering: "TeX capacity exceeded", missing LaTeX packages, permission denied, UTF-8 encoding issues, PDF not updated after changes, file already compliant, and tqdm not installed. Each entry includes the exact error symptom, cause, and fix with example commands.
-
----
-
 ## 🔥 High Priority Improvements
 _Important features that significantly improve the toolkit_
 
@@ -59,8 +42,6 @@ python3 latex-accessibility.py restore myfile.tex
 # List all backups
 python3 latex-accessibility.py list-backups
 ```
-
----
 
 ---
 
@@ -97,15 +78,6 @@ Create custom template, run tool, verify custom text is used.
 ## 💡 Low Priority / Nice-to-Have
 _Would be nice but not essential_
 
-### LP2. Interactive Mode / Wizard ✅ DONE
-**Effort:** 🟡 Medium (2 hours) | **Priority:** 💡 Nice-to-Have
-
-Added `wizard` command (also accepts `interactive`). No extra libraries needed — uses built-in `input()`.
-Steps: file vs directory → path → HTML URL → dry-run preview → confirm → apply → optional report.
-Ctrl-C cancels cleanly at any step.
-
----
-
 ### LP3. HTML Conversion Enhancements ⏳
 **Effort:** 🔴 High (4+ hours) | **Priority:** 💡 Nice-to-Have
 
@@ -123,8 +95,6 @@ Current HTML converter handles basic content well, but struggles with complex La
 
 **How to test:**
 Create test .tex files with complex content and verify HTML output.
-
----
 
 ---
 
@@ -163,34 +133,6 @@ Add CONTRIBUTING.md with:
 
 ---
 
-## ♿ Accessibility of the Tools Themselves
-_Making the tools accessible to all users_
-
----
-
-### ACC3. Plain Text Output Mode ✅
-Added `--plain` flag that replaces all emoji status symbols with bracketed text equivalents.
-Symbols are detected from `sys.argv` before any output, so the whole run is consistent:
-- `✓` → `[OK]`
-- `○` → `[SKIP]`
-- `⚠️ ` → `[WARN]`
-- `❌` → `[ERR]`
-- `✅` → `[DONE]`
-
-Works with any command: `add`, `fix`, `add-all`, `fix-all`, `validate`, `validate-all`,
-`report`, `check-packages`. Emoji in the generated Markdown report file content are
-unchanged (those are file output, not terminal output).
-
----
-
-### ACC2. Verbose Mode for Detailed Output ✅ DONE
-**Effort:** 🟢 Low (20 min) | **Priority:** 💡 Nice-to-Have
-
-Added `--verbose` flag. Lists each change made per file immediately before the summary line.
-Works with `add` and `add-all`. Compatible with `--plain` for fully text-based output.
-
----
-
 ## 🧪 Testing Infrastructure
 _Ensuring the tools work correctly_
 
@@ -217,16 +159,9 @@ Comprehensive test suite using pytest:
 
 **How to run:**
 ```bash
-# Install pytest
 pip install pytest pytest-cov
-
-# Run tests
 pytest tests/
-
-# With coverage report
 pytest --cov=latex-accessibility tests/
-
-# Should aim for >80% code coverage
 ```
 
 ---
@@ -238,7 +173,7 @@ pytest --cov=latex-accessibility tests/
 Tests for bugs that have been fixed to ensure they don't come back.
 
 **Test cases:**
-- Malformed hypersetup/bookmarksetup nesting (the big bug we fixed)
+- Malformed hypersetup/bookmarksetup nesting
 - UTF-8 encoding issues
 - Files without \maketitle
 - Files without hyperref package
@@ -261,69 +196,6 @@ Verify tools work on:
 - File paths work correctly (/ vs \)
 - Encoding works (UTF-8)
 - LaTeX packages can be detected
-- Colors work or fallback gracefully
-
----
-
-## 🔧 Additional LaTeX Features
-_Specific LaTeX commands and environments to handle better_
-
-### LAT1. Better \includegraphics Handling ✅ DONE
-**Effort:** 🟡 Medium (1-2 hours) | **Priority:** 💡 Nice-to-Have
-
-**What to detect:**
-Find `\includegraphics{image.png}` and suggest adding descriptions.
-
-**What to suggest:**
-```latex
-% Before:
-\includegraphics{diagram.png}
-
-% After (suggestion):
-\includegraphics{diagram.png}
-% Alt text: [Add description here for accessibility]
-```
-
----
-
-### LAT2. Detect Missing Alt Text in Figures ✅ DONE
-**Effort:** 🟡 Medium (1 hour) | **Priority:** 💡 Nice-to-Have
-
-**What to check:**
-Ensure figures have \caption for accessibility.
-
-**What to report:**
-```
-⚠️ Warning: Figure on line 42 has no \caption
-  Suggestion: Add \caption{Description of figure}
-```
-
----
-
-### LAT3. Table Accessibility Checks ✅ DONE
-**Effort:** 🟡 Medium (1-2 hours) | **Priority:** 💡 Nice-to-Have
-
-**What to check:**
-- Tables should have \caption
-- Consider suggesting header row markup
-- Warn about complex tables that may not be accessible
-
----
-
-### LAT4. Detect Color-Only Information ✅ DONE
-**Effort:** 🟡 Medium (1-2 hours) | **Priority:** 💡 Nice-to-Have
-
-**What to detect:**
-Use of `\textcolor` without additional cues (bold, italic, markers).
-
-**What to suggest:**
-```latex
-% Potentially inaccessible:
-\textcolor{red}{Important text}
-
-% Better:
-\textcolor{red}{\textbf{Important text}} % Also bold
-```
 
 ---
 
@@ -357,164 +229,107 @@ Use `multiprocessing.Pool` to process files in parallel.
 
 # ✅ COMPLETED
 
-## tex-to-html.py improvements
+## Output Accessibility Checking
 
-### Table Support ✅
-Added full HTML table conversion for `tabular`, `table`, and `longtable` environments.
-- Proper `<thead>`, `<tbody>`, `<th scope="col">`, `<td>` structure
-- Caption support via `\caption{}`
-- Header row detection using `\textbf{}`
-- `longtable` support including `\endfirsthead`, `\endhead`, `\endfoot`, `\endlastfoot`
-- Responsive design with horizontal scrolling, dark mode, alternating row colors
-- Table environments protected from block-splitting during preprocessing
+### OAC1. HTML Accessibility Report (`pa11y`) ✅ DONE
+Added `check-html <file.html>` and `check-html-all <directory>` commands. Uses pa11y to audit generated HTML for WCAG 2.1 AA compliance. Reports violations by severity, saves optional Markdown report with `--output=`. Detects missing pa11y and prints installation instructions.
 
-### \input{} and \include{} File Support ✅
-Converter now expands `\input{}` and `\include{}` commands recursively before conversion.
-- Handles nested inputs (files that include other files)
-- Resolves paths relative to the including file
-- Detects and warns about circular dependencies
-- Works with all three backends (custom, pandoc, htlatex)
+### OAC2. PDF Accessibility Report (`veraPDF`) ✅ DONE
+Added `check-pdf <file.pdf>` and `check-pdf-all <directory>` commands. Uses veraPDF to audit generated PDFs for PDF/UA compliance. Parses XML output, reports failures by clause, saves optional Markdown report with `--output=`. Detects missing veraPDF and prints installation instructions.
 
-### Comment Out Missing Website/GitHub Links ✅
-When no website or GitHub link is found in the .tex file, those HTML sections are now commented out instead of showing placeholder values.
-- With links: renders active `<a>` tags
-- Without links: outputs `<!-- ... -->` comments with placeholder text
-
-### Version Numbers ✅ (v1.2.2)
-Added `__version__` and `--version` flag to tex-to-html.py.
+### OAC3. Combined Source + Output Accessibility Report ✅ DONE
+`check-html` and `check-pdf` commands each save individual Markdown reports. Both integrate into the full workflow alongside the existing `report` command for source compliance.
 
 ---
 
-## latex-accessibility.py improvements
+## latex-accessibility.py
 
-### QW1. Add Version Number to Scripts ✅
-Added `__version__ = "1.0.0"` and `--version` / `-v` flag support.
+### QW4. Add --help Text with Examples ✅ DONE
+Replaced module docstring with structured help: COMMANDS table, FLAGS table, EXAMPLES section, and summaries of what `add` does automatically vs warns about. Running with no arguments now shows help instead of an error. `-h` added as alias for `--help`.
 
-**Output:**
-```bash
-python3 latex-accessibility.py --version
-# LaTeX Accessibility Tool v1.0.0
-```
+### QW5. Add Troubleshooting Section to README ✅ DONE
+Added Troubleshooting section to README.md covering: "TeX capacity exceeded", missing LaTeX packages, permission denied, UTF-8 encoding issues, PDF not updated after changes, file already compliant, and tqdm not installed. Each entry includes the exact error symptom, cause, and fix with example commands.
 
-### QW3 + HP3. Batch Processing with Progress and Summary Statistics ✅
-`add-all` and `fix-all` now show per-file progress with `[N/total]` counters and a summary at the end. An optional `--progress` flag enables a compact tqdm progress bar with graceful fallback when tqdm isn't installed.
+### LP2. Interactive Mode / Wizard ✅ DONE
+Added `wizard` command (also accepts `interactive`). No extra libraries needed — uses built-in `input()`.
+Steps: file vs directory → path → HTML URL → dry-run preview → confirm → apply → optional report.
+Ctrl-C cancels cleanly at any step.
 
-**Default verbose output:**
-```
-Processing 14 file(s) in IntroLinux/labs
+### ACC1. Better Error Messages for Screen Reader Users ✅ DONE
+Audited every emoji use in `latex-accessibility.py` and added explicit text status words where the emoji was the only indicator of meaning.
 
-[1/14] shellbasics.tex
-  ✓ modified
-[2/14] shellcond.tex
-  ○ already compliant
-...
-────────────────────────────────────────
-✓ Processed 14 file(s)
-  Modified:  1
-  Skipped:   13 (already compliant)
-  Errors:    0
-```
+### ACC2. Verbose Mode for Detailed Output ✅ DONE
+Added `--verbose` flag. Lists each change made per file immediately before the summary line.
+Works with `add` and `add-all`. Compatible with `--plain` for fully text-based output.
 
-**With `--progress` flag (requires `pip install tqdm`):**
-```
-Processing 14 file(s) in IntroLinux/labs
-100%|████████████████| 14/14 [00:01<00:00, 12.3file/s, ○ already compliant]
-────────────────────────────────────────
-✓ Processed 14 file(s)
-  ...
-```
+### ACC3. Plain Text Output Mode ✅ DONE
+Added `--plain` flag that replaces all emoji status symbols with bracketed text equivalents (`[OK]`, `[SKIP]`, `[WARN]`, `[ERR]`, `[DONE]`). Detected from `sys.argv` before any output so the whole run is consistent.
 
-**Without tqdm installed, `--progress` falls back gracefully:**
-```
-⚠️  tqdm not installed — falling back to verbose output.
-   To install: pip install tqdm
-```
+### LAT1. Better \includegraphics Handling ✅ DONE
+Automatically inserts `% Alt text: [Add description here for accessibility]` after any `\includegraphics` line missing one. Count reported in dry-run and verbose output.
 
-Errors now return `None` (vs `False` for already-compliant) so they're counted separately.
+### LAT2. Detect Missing Alt Text in Figures ✅ DONE
+Detects `\begin{figure}` environments missing `\caption` and warns with accurate source-file line numbers. Advisory only — never modifies files.
 
-### ACC1. Better Error Messages for Screen Reader Users ✅
-Audited every emoji use in `latex-accessibility.py` and added explicit text status words
-where the emoji was the only indicator of meaning:
-- `  ✓ {package}` → `  ✓ {package} — installed` (required and optional package listings)
-- `  ❌ {package} (missing)` → `  ❌ {package} — missing` (consistent phrasing)
-- `  ○ {package} (not installed, but optional)` → `  ○ {package} — not installed (optional)`
-- `  ❌ {location}{msg}` (parsed LaTeX errors) → `  ❌ Error: {location}{msg}`
-All other emoji uses already had a status verb or noun immediately following them.
+### LAT3. Table Accessibility Checks ✅ DONE
+Detects `\begin{table}` environments missing `\caption` and warns with accurate source-file line numbers. Handles `table*`. Advisory only.
+
+### LAT4. Detect Color-Only Information ✅ DONE
+Detects `\textcolor{}{}` usage where the text has no secondary formatting cue (`\textbf`, `\textit`, `\emph`, `\underline`, `\textsc`, `\textsf`, `\texttt`). Advisory only.
+
+### QW1. Add Version Number to Scripts ✅ DONE
+Added `__version__` and `--version` / `-v` flag.
+
+### QW3 + HP3. Batch Processing with Progress and Summary Statistics ✅ DONE
+`add-all` and `fix-all` now show per-file progress with `[N/total]` counters and a summary footer. `--progress` flag enables a compact tqdm progress bar with graceful fallback.
+
+### MP1. Dry Run Mode ✅ DONE
+Added `--dry-run` flag to `add`, `fix`, `add-all`, and `fix-all`. Runs all transformations in memory, prints what would change, never writes files.
+
+### MP2. Validation and Verification ✅ DONE
+Added `validate` and `validate-all` commands. Compiles with `pdflatex -interaction=nonstopmode`, parses the log for errors, checks accessibility features, cleans up auxiliary files.
+
+### LP4. Accessibility Compliance Report ✅ DONE
+Added `report` command. Generates a Markdown report with summary table, per-file feature checklists, and action items with checkboxes. Supports `--output=<path>` and `--format=pdf`.
+
+### HP1. LaTeX Package Detection and Installation ✅ DONE
+Added `check-packages` command. Detects LaTeX installation, checks required and optional packages, provides OS-specific installation instructions.
 
 ---
 
-### MP1. Dry Run Mode ✅
-Added `--dry-run` flag to `add`, `fix`, `add-all`, and `fix-all` commands.
-- Runs all transformations in memory but never writes to disk
-- Per-file output lists exactly what would change (which packages, URL wrapping, bookmarksetup, notice)
-- Batch summary footer changes from "Processed" to "[DRY RUN] analysed — no files written"
-- `Would modify:` counter replaces `Modified:` in the summary
+## tex-to-html.py
+
+### Table Support ✅ DONE
+Full HTML table conversion for `tabular`, `table`, and `longtable` environments with proper `<thead>`, `<tbody>`, `<th scope="col">` structure, caption support, and responsive design.
+
+### \input{} and \include{} File Support ✅ DONE
+Converter now expands `\input{}` and `\include{}` commands recursively before conversion. Handles nested inputs, circular dependency detection, and all three backends.
+
+### Comment Out Missing Website/GitHub Links ✅ DONE
+When no website or GitHub link is found in the .tex file, those HTML sections are commented out instead of showing placeholder values.
+
+### Version Numbers ✅ DONE
+Added `__version__` and `--version` flag to tex-to-html.py (v1.2.2).
 
 ---
 
-### LP4. Accessibility Compliance Report ✅
-Added `report` command that analyses all .tex files in a directory and writes a Markdown report.
-- Per-file feature checklist: hyperref, bookmark, enumitem, bookmarksetup, accessibility notice
-- Summary table (compliant / partial / non-compliant counts)
-- Action items section with `- [ ]` checkboxes for files that need fixes
-- `--output=<path>` to customise the output file location
-- `--format=pdf` converts via pandoc (falls back to Markdown with a clear message if pandoc is missing)
-- Default output: `<directory>/accessibility_report.md`
+## Documentation
+
+### DOC2. FAQ Section ✅ DONE
+Added FAQ section covering: `add` vs `fix`, "already compliant" message, `--dry-run`, `report` command, customising the HTML URL, "TeX capacity exceeded", Windows compatibility.
+
+### DOC3. Expand Examples Section ✅ DONE
+Added before/after examples, dry-run preview output, malformed structure fix, compliance report output, and complete end-to-end workflow to documentation.
+
+### DOC5. Changelog ✅ DONE
+Created `CHANGELOG.md` in Keep-a-Changelog format covering all three tools.
+
+### QW2. Add Example Section to README ✅ DONE
+Added before/after example showing key changes with visual annotations.
 
 ---
 
-### MP2. Validation and Verification ✅
-Added `validate` and `validate-all` commands that compile .tex files with pdflatex and report results.
-- Runs `pdflatex -interaction=nonstopmode` in the file's directory
-- Parses the `.log` file for `!` error lines and `l.N` line numbers
-- Checks for accessibility features (hyperref, bookmark, enumitem, bookmarksetup)
-- Cleans up auxiliary files (.aux, .log, .out, .toc, .fls, .fdb_latexmk, .synctex.gz)
-- `validate-all` shows per-file `[N/total]` progress and summary; exits with code 1 if any file fails
-- Returns `None` if pdflatex is not installed (skips gracefully)
+## General
 
----
-
-### HP1. LaTeX Package Detection and Installation ✅
-Added `check-packages` command that:
-- Detects if LaTeX is installed (checks for kpsewhich)
-- Checks for required packages (hyperref, bookmark, enumitem)
-- Checks for optional packages (accessibility)
-- Detects OS (Ubuntu/Debian, Fedora/RHEL, Mac, Windows, generic Linux)
-- Provides OS-specific installation instructions
-- Returns exit code 0 for success, 1 for missing packages
-
----
-
-## General improvements
-
-### DOC2. FAQ Section ✅
-Added "Frequently Asked Questions" section to ACCESSIBILITY_README.md covering:
-- `add` vs `fix` — when to use each
-- "Already compliant" message but PDF still lacks bookmarks — PDF must be regenerated separately
-- `--dry-run` — how to preview changes without writing files
-- `report` command — how to check a whole directory at once
-- Customising the HTML URL pattern
-- "TeX capacity exceeded" error — use `fix`
-- Windows compatibility
-
-### DOC3. Expand Examples Section ✅
-Added "More Examples" section to ACCESSIBILITY_README.md with:
-- Dry-run preview (before/after output for compliant and non-compliant files)
-- Malformed structure fix — broken vs corrected `\hypersetup`/`\bookmarksetup` layout
-- Compliance report — example output and PDF variant
-- Complete end-to-end workflow: `--dry-run` → `add` → `validate` → `tex-to-html.py` → `report`
-
-### DOC5. Changelog ✅
-Created `CHANGELOG.md` covering all three tools in Keep-a-Changelog format:
-- `latex-accessibility.py` v1.0.0 and v1.1.0
-- `tex-to-html.py` v1.0.0 through v1.2.2
-- `accessible-lab.css` v1.0.0 and v1.1.0
-
-### QW2. Add Example Section to README ✅
-Added concise before/after example to ACCESSIBILITY_README.md showing key changes (packages, bookmarks, URL wrapping) with visual annotations.
-
-### Tools Made Generic ✅
-Removed all hardcoded personal information from tools:
-- tex-to-html.py: generic author defaults, commented-out website/GitHub
-- latex-accessibility.py: generic `example.com` domain instead of personal domain
-- add-lab-links.py: accepts directory as argument instead of hardcoded path
+### Tools Made Generic ✅ DONE
+Removed all hardcoded personal information: generic author defaults, `example.com` domain, directory arguments instead of hardcoded paths.

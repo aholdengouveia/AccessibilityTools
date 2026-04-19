@@ -10,6 +10,7 @@ Tools to make LaTeX documents accessible and convert them to clean, accessible H
 - [What to Run When](#what-to-run-when)
   - [Accessible PDF](#accessible-pdf-latex-accessibilitypy--pdflatex)
   - [Accessible HTML](#accessible-html-tex-to-htmlpy)
+  - [Checking Generated Output for Accessibility](#checking-the-generated-output-for-accessibility)
   - [Both PDF and HTML at once](#both-pdf-and-html-at-once-update-tex-outputssh)
 - [Full Workflow: New Lab File](#full-workflow-new-lab-file)
 - [What `add` Does Automatically](#what-add-does-automatically)
@@ -127,6 +128,24 @@ Converts `.tex` files directly to semantic, screen-reader-friendly HTML without 
 | Watch for changes and auto-convert | `make watch` |
 | Remove generated HTML files | `make clean` |
 
+### Checking the Generated Output for Accessibility
+
+Once you have generated a PDF and HTML from your `.tex` file, you can audit the output files themselves:
+
+| Situation | Command |
+|-----------|---------|
+| Check a single HTML file for WCAG issues | `python3 latex-accessibility.py check-html myfile.html` |
+| Check all HTML files in a directory | `python3 latex-accessibility.py check-html-all labs/` |
+| Check a single PDF for PDF/UA compliance | `python3 latex-accessibility.py check-pdf myfile.pdf` |
+| Check all PDFs in a directory | `python3 latex-accessibility.py check-pdf-all labs/` |
+| Save the audit result to a Markdown file | Add `--output=report.md` to any check command |
+
+**Requirements:**
+- HTML checking: `pa11y` — install with `npm install -g pa11y` (requires Node.js)
+- PDF checking: `veraPDF` — download the `-installer.jar` from [github.com/veraPDF/veraPDF-apps/releases/latest](https://github.com/veraPDF/veraPDF-apps/releases/latest) (requires Java; do not use hardcoded version URLs — they return 404 as releases change)
+
+If a tool isn't installed the command tells you exactly what to install — nothing will crash.
+
 ### Both PDF and HTML at once (`update-tex-outputs.sh`)
 
 Interactive script that runs `latex-accessibility.py`, then `pdflatex`, then `tex-to-html.py` in one go:
@@ -161,8 +180,14 @@ python3 latex-accessibility.py validate mylab.tex
 # 5. Convert to accessible HTML
 python3 tex-to-html.py mylab.tex
 
-# 6. Check the whole directory for compliance
+# 6. Check the whole directory for source compliance
 python3 latex-accessibility.py report labs/
+
+# 7. Audit the generated HTML for WCAG issues (requires pa11y)
+python3 latex-accessibility.py check-html mylab.html
+
+# 8. Audit the generated PDF for PDF/UA compliance (requires veraPDF)
+python3 latex-accessibility.py check-pdf mylab.pdf
 ```
 
 ---
@@ -426,9 +451,9 @@ Force a specific backend with `--backend=pandoc` etc.
 ! TeX capacity exceeded, sorry [input stack size=5000].
 ```
 
-**Cause:** `\bookmarksetup` ended up nested inside `\hypersetup` — usually from a previous run of the tool on an already-modified file.
+**Cause:** `\bookmarksetup` ended up nested inside `\hypersetup`. The `add` command adds these blocks correctly, but this can happen if `add` was run on a file that already had a partial or hand-edited configuration, or if the file was manually edited after running the tool.
 
-**Fix:**
+**Fix:** The `fix` command detects and corrects this automatically:
 ```bash
 python3 latex-accessibility.py fix myfile.tex
 # ✓ Fixed structure in myfile.tex

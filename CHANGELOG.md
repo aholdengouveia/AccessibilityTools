@@ -9,6 +9,17 @@ Both tools use [Semantic Versioning](https://semver.org/): MAJOR.MINOR.PATCH.
 
 ## latex-accessibility.py
 
+### [1.3.0] — 2026-04-19
+
+#### Added
+- `check-html <file.html>` — audits a generated HTML file for WCAG 2.1 AA issues using pa11y. Reports violations grouped by severity (critical, serious, moderate, minor). Supports `--output=<path>` to save a Markdown report.
+- `check-html-all <directory>` — batch version of `check-html` for all `.html` files in a directory, with per-file progress and a summary.
+- `check-pdf <file.pdf>` — audits a generated PDF file for PDF/UA compliance using veraPDF. Parses XML output and reports failures by clause. Supports `--output=<path>` to save a Markdown report.
+- `check-pdf-all <directory>` — batch version of `check-pdf` for all `.pdf` files in a directory.
+- Both checkers detect missing tools and print clear installation instructions rather than crashing. Exit code 0 = pass, 1 = issues found or tool missing.
+
+---
+
 ### [1.2.0] — 2026-04-19
 
 #### Added

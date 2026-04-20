@@ -11,6 +11,7 @@ Tools to make LaTeX documents accessible and convert them to clean, accessible H
   - [Accessible PDF](#accessible-pdf-latex-accessibilitypy--pdflatex)
   - [Accessible HTML](#accessible-html-tex-to-htmlpy)
   - [Checking Generated Output for Accessibility](#checking-the-generated-output-for-accessibility)
+  - [Universal Design for Learning (UDL) Check](#universal-design-for-learning-udl-check)
   - [Both PDF and HTML at once](#both-pdf-and-html-at-once-update-tex-outputssh)
 - [Full Workflow: New Lab File](#full-workflow-new-lab-file)
 - [What `add` Does Automatically](#what-add-does-automatically)
@@ -136,8 +137,10 @@ Once you have generated a PDF and HTML from your `.tex` file, you can audit the 
 |-----------|---------|
 | Check a single HTML file for WCAG issues | `python3 latex-accessibility.py check-html myfile.html` |
 | Check all HTML files in a directory | `python3 latex-accessibility.py check-html-all labs/` |
+| Check all HTML files recursively | `python3 latex-accessibility.py check-html-all labs/ --recursive` |
 | Check a single PDF for PDF/UA compliance | `python3 latex-accessibility.py check-pdf myfile.pdf` |
 | Check all PDFs in a directory | `python3 latex-accessibility.py check-pdf-all labs/` |
+| Check all PDFs recursively | `python3 latex-accessibility.py check-pdf-all labs/ --recursive` |
 | Save the audit result to a Markdown file | Add `--output=report.md` to any check command |
 
 **Requirements:**
@@ -145,6 +148,27 @@ Once you have generated a PDF and HTML from your `.tex` file, you can audit the 
 - PDF checking: `veraPDF` — download the `-installer.jar` from [github.com/veraPDF/veraPDF-apps/releases/latest](https://github.com/veraPDF/veraPDF-apps/releases/latest) (requires Java; do not use hardcoded version URLs — they return 404 as releases change)
 
 If a tool isn't installed the command tells you exactly what to install — nothing will crash.
+
+### Universal Design for Learning (UDL) Check
+
+Universal Design for Learning goes beyond WCAG compliance — it checks that content is available in **multiple formats** so every student can engage with it regardless of their needs or preferences. The core UDL principle checked here is *multiple means of representation*: every lab should exist as both a PDF (for printing, offline use, and structured navigation) and as HTML (for screen readers, browser zoom, dark mode, and keyboard navigation), and each format should link to the other.
+
+| Situation | Command |
+|-----------|---------|
+| Check one directory for paired HTML + PDF | `python3 latex-accessibility.py check-udl labs/` |
+| Check a whole course repo recursively | `python3 latex-accessibility.py check-udl labs/ --recursive` |
+| Save the results to a Markdown report | `python3 latex-accessibility.py check-udl labs/ --output=udl-report.md` |
+
+**What it checks for each `.tex` file:**
+- A `.html` file with the same name exists alongside it
+- A `.pdf` file with the same name exists alongside it
+- The `.tex` accessibility notice contains a link to the HTML version
+- The HTML file links back to the PDF version
+
+Fragment files (CV sections, `\input`-only files without `\documentclass`) are automatically skipped and not reported as failures.
+
+**Why this matters:**
+A student using a screen reader may find the HTML version far more navigable. A student printing materials needs the PDF. A student with low vision may prefer HTML for browser zoom and high contrast. Providing both — and making each one point to the other — means no student has to hunt for the version that works for them.
 
 ### Both PDF and HTML at once (`update-tex-outputs.sh`)
 

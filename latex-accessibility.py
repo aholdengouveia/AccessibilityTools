@@ -9,6 +9,9 @@ COMMANDS
   fix <file.tex>                Fix structural issues (e.g. bookmarksetup inside hypersetup)
   fix-all <directory>           Fix structural issues in every .tex file in a directory
 
+  restore <file.tex>            Restore a file from its .bak backup
+  list-backups [path]           List all .tex.bak backup files (default: current directory)
+
   validate <file.tex>           Compile with pdflatex and report accessibility features
   validate-all <directory>      Validate every .tex file in a directory
 
@@ -19,12 +22,17 @@ COMMANDS
   check-html-all <directory>    Audit all HTML files in a directory
   check-pdf <file.pdf>          Audit a PDF file for PDF/UA compliance (requires veraPDF)
   check-pdf-all <directory>     Audit all PDF files in a directory
+  check-udl <directory>         Check UDL format pairing: every .tex has a paired .html
+                                and .pdf, and each format links to the other
 
 FLAGS (work with most commands)
+  --backup                      Save a .bak copy before modifying any file
   --dry-run                     Show what would change without writing any files
   --verbose                     Print each individual change made per file
   --plain                       Replace emoji with [OK]/[WARN]/[ERR] for screen readers
   --progress                    Show a progress bar for batch operations (requires tqdm)
+  --recursive / -r              Recurse into subdirectories (check-html-all, check-pdf-all,
+                                check-udl)
   --format=pdf                  Output report as PDF instead of Markdown (requires pandoc)
   --output=<path>               Custom output path for the report file
   --version / -v                Print version and exit
@@ -36,6 +44,11 @@ EXAMPLES
 
   Preview what a file needs (no changes written):
     python3 latex-accessibility.py add mylab.tex --dry-run
+
+  Make a single file accessible (with backup):
+    python3 latex-accessibility.py add mylab.tex --backup
+    python3 latex-accessibility.py restore mylab.tex   # undo if needed
+    python3 latex-accessibility.py list-backups labs/  # see all backups
 
   Make a single file accessible:
     python3 latex-accessibility.py add mylab.tex
@@ -93,6 +106,7 @@ import sys
 import re
 import platform
 import subprocess
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -264,6 +278,13 @@ def add_accessibility_packages(content):
     """Add accessibility-related packages if missing"""
     modified = False
 
+    # Check for and add hyperxmp package (must come before hyperref for XMP metadata)
+    if r'\usepackage{hyperxmp}' not in content:
+        pattern = r'(\\usepackage(?:\[.*?\])?\{hyperref\})'
+        if re.search(pattern, content):
+            content = re.sub(pattern, r'\\usepackage{hyperxmp}\n\1', content)
+            modified = True
+
     # Check for and add bookmark package
     if r'\usepackage{bookmark}' not in content:
         # Find hyperref package and add bookmark after it
@@ -283,6 +304,35 @@ def add_accessibility_packages(content):
             pattern = r'(\\usepackage(?:\[.*?\])?\{hyperref\})'
             content = re.sub(pattern, r'\1\n\\usepackage{enumitem}', content)
             modified = True
+
+    return content, modified
+
+
+def add_pdfdisplaydoctitle(content):
+    """Add pdfdisplaydoctitle=true and pdfuapart=1 to \\hypersetup if missing.
+
+    pdfdisplaydoctitle: makes PDF viewers show the document title in the title
+    bar instead of the filename — required for PDF/UA clause 7.1.
+
+    pdfuapart=1: tells hyperxmp to stamp the XMP metadata stream with the
+    PDF/UA-1 conformance declaration — required for PDF/UA clause 5.
+    """
+    modified = False
+    additions = []
+
+    if 'pdfdisplaydoctitle' not in content:
+        additions.append('pdfdisplaydoctitle=true')
+    if 'pdfuapart' not in content:
+        additions.append('pdfuapart=1')
+
+    if not additions:
+        return content, False
+
+    pattern = r'(\\hypersetup\{)'
+    if re.search(pattern, content):
+        insert = '\n    ' + ',\n    '.join(additions) + ','
+        content = re.sub(pattern, r'\1' + insert, content)
+        modified = True
 
     return content, modified
 
@@ -527,7 +577,7 @@ def check_table_captions(content):
     return missing
 
 
-def add_all_features(tex_file, html_url=None, dry_run=False, verbose=False):
+def add_all_features(tex_file, html_url=None, dry_run=False, verbose=False, backup=False):
     """Add all accessibility features to a .tex file.
 
     When dry_run=True the file is never written; instead a summary of what
@@ -560,6 +610,7 @@ def add_all_features(tex_file, html_url=None, dry_run=False, verbose=False):
     # Run all transformations in memory (always — dry-run or not)
     content = original_content
     content, pkg_modified      = add_accessibility_packages(content)
+    content, doctitle_modified = add_pdfdisplaydoctitle(content)
     content, url_modified      = fix_plain_urls(content)
     content, bookmark_modified = add_bookmark_configuration(content)
     if html_url:
@@ -568,7 +619,7 @@ def add_all_features(tex_file, html_url=None, dry_run=False, verbose=False):
         notice_modified = False
     content, alt_modified, alt_count = add_alt_text_hints(content)
 
-    modified = pkg_modified or url_modified or bookmark_modified or notice_modified or alt_modified
+    modified = pkg_modified or doctitle_modified or url_modified or bookmark_modified or notice_modified or alt_modified
 
     # Advisory checks — never block or modify, run on original_content for accurate line numbers
     caption_issues = check_figure_captions(original_content)
@@ -580,12 +631,16 @@ def add_all_features(tex_file, html_url=None, dry_run=False, verbose=False):
             changes = []
             if pkg_modified:
                 pkgs = []
+                if '\\usepackage{hyperxmp}' not in original_content:
+                    pkgs.append('hyperxmp')
                 if '\\usepackage{bookmark}' not in original_content:
                     pkgs.append('bookmark')
                 if '\\usepackage{enumitem}' not in original_content:
                     pkgs.append('enumitem')
                 if pkgs:
                     changes.append(f'add package(s): {", ".join(pkgs)}')
+            if doctitle_modified:
+                changes.append('add pdfdisplaydoctitle=true and pdfuapart=1 to \\hypersetup')
             if url_modified:
                 changes.append('wrap plain URLs in \\url{}')
             if bookmark_modified:
@@ -609,18 +664,24 @@ def add_all_features(tex_file, html_url=None, dry_run=False, verbose=False):
 
     # Write changes to disk
     if modified:
+        if backup:
+            _backup_file(tex_file)
         try:
             with open(tex_file, 'w', encoding='utf-8') as f:
                 f.write(content)
             if verbose:
                 if pkg_modified:
                     pkgs = []
+                    if '\\usepackage{hyperxmp}' not in original_content:
+                        pkgs.append('hyperxmp')
                     if '\\usepackage{bookmark}' not in original_content:
                         pkgs.append('bookmark')
                     if '\\usepackage{enumitem}' not in original_content:
                         pkgs.append('enumitem')
                     for pkg in pkgs:
                         print(f"  - Added package: {pkg}")
+                if doctitle_modified:
+                    print(f"  - Added pdfdisplaydoctitle=true and pdfuapart=1 to \\hypersetup")
                 if url_modified:
                     print(f"  - Wrapped plain URLs in \\url{{}}")
                 if bookmark_modified:
@@ -653,7 +714,66 @@ def add_all_features(tex_file, html_url=None, dry_run=False, verbose=False):
     return False
 
 
-def fix_structure(tex_file, dry_run=False):
+def _backup_file(tex_path):
+    """Copy tex_path to tex_path.bak. Returns backup Path or None on failure."""
+    src = Path(tex_path)
+    bak = src.with_suffix(src.suffix + '.bak')
+    try:
+        shutil.copy2(str(src), str(bak))
+        print(f"  {SYM_OK} Backup created: {bak.name}")
+        return bak
+    except Exception as e:
+        print(f"{SYM_ERR} Could not create backup for {src.name}: {e}")
+        return None
+
+
+def restore_file(tex_file):
+    """Restore a .tex file from its .bak backup.
+
+    Returns True on success, False if backup not found, None on error.
+    """
+    src = Path(tex_file)
+    bak = src.with_suffix(src.suffix + '.bak')
+    if not bak.exists():
+        print(f"{SYM_ERR} No backup found: {bak}")
+        print(f"   Run 'add --backup' or 'fix --backup' to create a backup first.")
+        return False
+    try:
+        shutil.copy2(str(bak), str(src))
+        print(f"{SYM_OK} Restored {src.name} from {bak.name}")
+        return True
+    except Exception as e:
+        print(f"{SYM_ERR} Error restoring {src.name}: {e}")
+        return None
+
+
+def list_backups(path):
+    """List all .tex.bak files under path (file or directory).
+
+    Returns list of Path objects found.
+    """
+    p = Path(path)
+    if p.is_file():
+        candidates = [p.with_suffix(p.suffix + '.bak')]
+    else:
+        candidates = sorted(p.rglob('*.tex.bak'))
+
+    found = [c for c in candidates if c.exists()]
+    if not found:
+        print(f"No .tex.bak backup files found in {path}")
+        return []
+
+    print(f"Found {len(found)} backup file(s):")
+    from datetime import datetime as _dt
+    import os as _os
+    for bak in found:
+        mtime = _dt.fromtimestamp(bak.stat().st_mtime).strftime('%Y-%m-%d %H:%M')
+        size  = bak.stat().st_size
+        print(f"  {bak}  ({size} bytes, {mtime})")
+    return found
+
+
+def fix_structure(tex_file, dry_run=False, backup=False):
     """Fix structural issues in a .tex file.
 
     When dry_run=True the file is never written; instead a summary of what
@@ -676,6 +796,8 @@ def fix_structure(tex_file, dry_run=False):
         return True if modified else False
 
     if modified:
+        if backup:
+            _backup_file(tex_file)
         try:
             with open(tex_file, 'w', encoding='utf-8') as f:
                 f.write(content)
@@ -919,11 +1041,33 @@ def _find_verapdf():
     return None
 
 
-def check_html_accessibility(html_file, report_file=None):
+def _find_chrome():
+    """Return the path to a Chrome/Chromium executable, or None if not found."""
+    import os
+    # 1. Honour explicit env var
+    env_path = os.environ.get('PUPPETEER_EXECUTABLE_PATH')
+    if env_path and Path(env_path).exists():
+        return env_path
+    # 2. Try common binary names on PATH
+    for name in ('google-chrome', 'google-chrome-stable', 'chromium-browser', 'chromium'):
+        found = shutil.which(name)
+        if found:
+            return found
+    # 3. Common fixed locations on Linux/macOS
+    for fixed in ('/usr/bin/google-chrome', '/usr/bin/chromium-browser',
+                  '/snap/bin/chromium', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'):
+        if Path(fixed).exists():
+            return fixed
+    return None
+
+
+def check_html_accessibility(html_file, report_file=None, standard='WCAG2AA'):
     """
     Run a WCAG accessibility audit on an HTML file using pa11y.
 
-    Returns a dict with keys: file, tool, critical, serious, moderate, minor,
+    standard: pa11y --standard value, e.g. 'WCAG2AA' or 'WCAG2AAA'.
+
+    Returns a dict with keys: file, tool, standard, critical, serious, moderate, minor,
     issues (list of dicts), tool_missing (bool), error (str or None).
     Writes a Markdown report to report_file if provided.
     """
@@ -932,6 +1076,7 @@ def check_html_accessibility(html_file, report_file=None):
         'file': html_path.name,
         'path': str(html_path),
         'tool': 'pa11y',
+        'standard': standard,
         'critical': 0, 'serious': 0, 'moderate': 0, 'minor': 0,
         'issues': [],
         'tool_missing': False,
@@ -952,12 +1097,19 @@ def check_html_accessibility(html_file, report_file=None):
         print(f"{SYM_ERR} File not found: {html_file}")
         return result
 
-    print(f"Checking {html_path.name} for WCAG 2.1 AA compliance (pa11y)...")
+    standard_label = 'WCAG 2.1 AAA' if standard == 'WCAG2AAA' else 'WCAG 2.1 AA'
+    print(f"Checking {html_path.name} for {standard_label} compliance (pa11y)...")
+
+    chrome = _find_chrome()
+    import os
+    env = os.environ.copy()
+    if chrome:
+        env['PUPPETEER_EXECUTABLE_PATH'] = chrome
 
     try:
         proc = subprocess.run(
-            [pa11y, '--reporter', 'json', str(html_path)],
-            capture_output=True, text=True, timeout=60
+            [pa11y, '--reporter', 'json', '--standard', standard, str(html_path)],
+            capture_output=True, text=True, timeout=60, env=env
         )
         import json
         raw = proc.stdout.strip()
@@ -1011,10 +1163,12 @@ def check_html_accessibility(html_file, report_file=None):
 
 def _write_html_report(result, report_file):
     """Write an HTML accessibility check result to a Markdown file."""
+    standard = result.get('standard', 'WCAG2AA')
+    standard_label = 'WCAG 2.1 AAA' if standard == 'WCAG2AAA' else 'WCAG 2.1 AA'
     lines = [
         f"# HTML Accessibility Report: {result['file']}",
         '',
-        f"**Tool:** pa11y (WCAG 2.1 AA)  ",
+        f"**Tool:** pa11y ({standard_label})  ",
         f"**File:** `{result['path']}`  ",
         f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M')}",
         '',
@@ -1044,6 +1198,173 @@ def _write_html_report(result, report_file):
     print(f"  {SYM_DONE} Report saved: {report_file}")
 
 
+def check_udl_directory(directory, recursive=False, report_file=None):
+    """Check a directory for Universal Design for Learning (UDL) compliance.
+
+    For each .tex source file, verifies:
+      1. A paired .html file exists (multiple means of representation)
+      2. A paired .pdf file exists
+      3. The .tex accessibility notice links to the .html version
+      4. The .html file links back to the .pdf version
+      5. The linked filenames are consistent (no broken cross-references)
+
+    Returns a dict with keys: total, passed, issues (list of dicts).
+    """
+    directory = Path(directory)
+    glob_fn = directory.rglob if recursive else directory.glob
+
+    all_tex = sorted(t for t in glob_fn('*.tex') if '_site' not in t.parts)
+    # Skip fragment files — standalone labs always have \documentclass,
+    # section fragments (\input'd into a parent) do not.
+    tex_files = []
+    skipped_fragments = []
+    for t in all_tex:
+        try:
+            head = t.read_text(encoding='utf-8', errors='ignore')[:500]
+            if '\\documentclass' in head:
+                tex_files.append(t)
+            else:
+                skipped_fragments.append(t.name)
+        except Exception:
+            skipped_fragments.append(t.name)
+
+    if not tex_files:
+        print(f"No standalone .tex files found (skipped {len(skipped_fragments)} fragment(s))")
+        return {'total': 0, 'passed': 0, 'issues': []}
+
+    if skipped_fragments:
+        print(f"  (skipping {len(skipped_fragments)} fragment file(s) without \\documentclass)\n")
+
+    results = []
+
+    for tex_path in tex_files:
+        stem = tex_path.stem
+        html_path = tex_path.with_suffix('.html')
+        pdf_path  = tex_path.with_suffix('.pdf')
+        file_issues = []
+
+        # 1. Paired HTML exists
+        if not html_path.exists():
+            file_issues.append({
+                'check': 'paired-html',
+                'severity': 'error',
+                'message': f"No HTML version found — expected {html_path.name}",
+            })
+
+        # 2. Paired PDF exists
+        if not pdf_path.exists():
+            file_issues.append({
+                'check': 'paired-pdf',
+                'severity': 'error',
+                'message': f"No PDF version found — expected {pdf_path.name}",
+            })
+
+        # 3. .tex accessibility notice links to the .html
+        try:
+            tex_content = tex_path.read_text(encoding='utf-8')
+            # Look for any URL containing the stem and .html in the body
+            body = tex_content.split('\\begin{document}', 1)[-1] if '\\begin{document}' in tex_content else tex_content
+            html_link_in_tex = bool(re.search(
+                re.escape(stem) + r'\.html', body
+            ))
+            if not html_link_in_tex:
+                file_issues.append({
+                    'check': 'tex-links-html',
+                    'severity': 'warning',
+                    'message': f"Accessibility notice in {tex_path.name} does not appear to link to {stem}.html",
+                })
+        except Exception:
+            pass
+
+        # 4 & 5. .html links back to .pdf with correct filename
+        if html_path.exists():
+            try:
+                html_content = html_path.read_text(encoding='utf-8')
+                # Check for a link whose href is exactly the pdf filename
+                pdf_link_pattern = re.compile(
+                    r'href=["\']' + re.escape(pdf_path.name) + r'["\']', re.IGNORECASE
+                )
+                if not pdf_link_pattern.search(html_content):
+                    # Also accept full-path references
+                    if pdf_path.name not in html_content:
+                        file_issues.append({
+                            'check': 'html-links-pdf',
+                            'severity': 'warning',
+                            'message': f"{html_path.name} does not link back to {pdf_path.name}",
+                        })
+            except Exception:
+                pass
+
+        results.append({
+            'file': stem,
+            'tex': str(tex_path),
+            'issues': file_issues,
+        })
+
+    total  = len(results)
+    passed = sum(1 for r in results if not r['issues'])
+    all_issues = [
+        dict(file=r['file'], **issue)
+        for r in results for issue in r['issues']
+    ]
+
+    # Print results
+    for r in results:
+        if r['issues']:
+            print(f"  {SYM_WARN} {r['file']}")
+            for issue in r['issues']:
+                sym = SYM_ERR if issue['severity'] == 'error' else SYM_WARN
+                print(f"    {sym} [{issue['check']}] {issue['message']}")
+        else:
+            print(f"  {SYM_OK} {r['file']} — HTML + PDF paired and cross-linked")
+
+    print()
+    print('─' * 50)
+    errors   = sum(1 for i in all_issues if i['severity'] == 'error')
+    warnings = sum(1 for i in all_issues if i['severity'] == 'warning')
+    print(f"{SYM_DONE} Checked {total} .tex file(s): {passed} fully compliant")
+    if errors:
+        print(f"  {SYM_ERR} {errors} error(s) — missing paired format file(s)")
+    if warnings:
+        print(f"  {SYM_WARN} {warnings} warning(s) — cross-linking gaps")
+
+    if report_file:
+        lines = [
+            '# UDL Format & Cross-Linking Report',
+            '',
+            f'**Directory:** `{directory}`  ',
+            f'**Date:** {datetime.now().strftime("%Y-%m-%d %H:%M")}  ',
+            f'**Scope:** {"recursive" if recursive else "single directory"}',
+            '',
+            '## Summary',
+            '',
+            f'| Check | Count |',
+            f'|-------|-------|',
+            f'| .tex files checked | {total} |',
+            f'| Fully compliant | {passed} |',
+            f'| Errors (missing files) | {errors} |',
+            f'| Warnings (linking gaps) | {warnings} |',
+            '',
+            '## Results',
+            '',
+        ]
+        for r in results:
+            if r['issues']:
+                lines.append(f"### ❌ {r['file']}")
+                for issue in r['issues']:
+                    marker = '🔴' if issue['severity'] == 'error' else '🟡'
+                    lines.append(f"- {marker} **{issue['check']}**: {issue['message']}")
+            else:
+                lines.append(f"### ✅ {r['file']}")
+                lines.append("- Paired HTML and PDF present")
+                lines.append("- PDF links to HTML, HTML links to PDF")
+            lines.append('')
+        Path(report_file).write_text('\n'.join(lines), encoding='utf-8')
+        print(f"  {SYM_DONE} Report saved: {report_file}")
+
+    return {'total': total, 'passed': passed, 'issues': all_issues}
+
+
 def check_pdf_accessibility(pdf_file, report_file=None):
     """
     Run a PDF/UA accessibility audit on a PDF file using veraPDF.
@@ -1068,7 +1389,7 @@ def check_pdf_accessibility(pdf_file, report_file=None):
         result['tool_missing'] = True
         result['error'] = 'veraPDF not found'
         print(f"{SYM_ERR} veraPDF is not installed — cannot check PDF accessibility")
-        print(f"   Download from: https://verapdf.org/download")
+        print(f"   Download from: https://github.com/veraPDF/veraPDF-apps/releases/latest")
         print(f"   (requires Java — install with: sudo apt-get install default-jre)")
         return result
 
@@ -1081,7 +1402,7 @@ def check_pdf_accessibility(pdf_file, report_file=None):
 
     try:
         proc = subprocess.run(
-            [verapdf, '--format', 'xml', str(pdf_path)],
+            [verapdf, '--flavour', 'ua1', '--format', 'xml', str(pdf_path)],
             capture_output=True, text=True, timeout=120
         )
         xml_output = proc.stdout
@@ -1098,17 +1419,23 @@ def check_pdf_accessibility(pdf_file, report_file=None):
     try:
         import xml.etree.ElementTree as ET
         root = ET.fromstring(xml_output)
+
+        # Summary counts are on the <details> element inside <validationReport>
+        details = root.find('.//validationReport/details')
+        if details is not None:
+            result['passed'] = int(details.get('passedRules', 0))
+            result['failed'] = int(details.get('failedRules', 0))
+
+        # Collect individual failed rules; description is a child element
         for rule in root.iter('rule'):
-            passed = int(rule.get('passed', 0))
-            failed = int(rule.get('failed', 0))
-            result['passed'] += passed
-            result['failed'] += failed
-            if failed:
+            if rule.get('status') == 'failed':
+                desc_el = rule.find('description')
+                description = desc_el.text.strip() if desc_el is not None and desc_el.text else ''
                 result['failures'].append({
                     'clause': rule.get('clause', ''),
                     'test_number': rule.get('testNumber', ''),
-                    'description': rule.get('description', ''),
-                    'count': failed,
+                    'description': description,
+                    'count': int(rule.get('failedChecks', 1)),
                 })
     except Exception as e:
         result['error'] = f"Could not parse veraPDF output: {e}"
@@ -1365,7 +1692,7 @@ def generate_report(directory, output_file=None, output_format='markdown'):
         print("  All files meet accessibility requirements.")
 
 
-def process_directory(directory, command, use_progress=False, dry_run=False):
+def process_directory(directory, command, use_progress=False, dry_run=False, backup=False):
     """Process all .tex files in a directory"""
     directory = Path(directory)
     tex_files = sorted(directory.glob('*.tex'))
@@ -1382,9 +1709,9 @@ def process_directory(directory, command, use_progress=False, dry_run=False):
     def process_file(tex_file):
         """Run the appropriate command on one file, return result."""
         if command == 'add-all':
-            return add_all_features(tex_file, dry_run=dry_run, verbose=_VERBOSE)
+            return add_all_features(tex_file, dry_run=dry_run, verbose=_VERBOSE, backup=backup)
         elif command == 'fix-all':
-            return fix_structure(tex_file, dry_run=dry_run)
+            return fix_structure(tex_file, dry_run=dry_run, backup=backup)
 
     def label_result(result, tex_file):
         """Update counters and return a short status string."""
@@ -1639,16 +1966,17 @@ def main():
                 sys.exit(0)
 
         dry_run = '--dry-run' in sys.argv
+        do_backup = '--backup' in sys.argv
 
         if command == 'add':
-            result = add_all_features(tex_file, dry_run=dry_run, verbose=_VERBOSE)
+            result = add_all_features(tex_file, dry_run=dry_run, verbose=_VERBOSE, backup=do_backup)
             if not dry_run:
                 if result is True:
                     print(f"{SYM_OK} Added accessibility features to {tex_file}")
                 elif result is False:
                     print(f"{SYM_SKIP} {tex_file} already has accessibility features")
         elif command == 'fix':
-            result = fix_structure(tex_file, dry_run=dry_run)
+            result = fix_structure(tex_file, dry_run=dry_run, backup=do_backup)
             if not dry_run:
                 if result is True:
                     print(f"{SYM_OK} Fixed structure in {tex_file}")
@@ -1678,7 +2006,22 @@ def main():
 
         use_progress = '--progress' in sys.argv
         dry_run      = '--dry-run'  in sys.argv
-        process_directory(directory, command, use_progress=use_progress, dry_run=dry_run)
+        do_backup    = '--backup'   in sys.argv
+        process_directory(directory, command, use_progress=use_progress, dry_run=dry_run, backup=do_backup)
+
+    elif command == 'restore':
+        if len(sys.argv) < 3:
+            print(f"{SYM_ERR} Error: Missing file argument")
+            print(f"\nUsage: {sys.argv[0]} restore <file.tex>")
+            sys.exit(1)
+        tex_file = sys.argv[2]
+        result = restore_file(tex_file)
+        sys.exit(0 if result is True else 1)
+
+    elif command == 'list-backups':
+        path = sys.argv[2] if len(sys.argv) >= 3 else '.'
+        found = list_backups(path)
+        sys.exit(0 if found else 1)
 
     elif command == 'validate':
         if len(sys.argv) < 3:
@@ -1772,6 +2115,23 @@ def main():
     elif command in ('wizard', 'interactive'):
         run_wizard()
 
+    elif command == 'check-udl':
+        if len(sys.argv) < 3:
+            print(f"{SYM_ERR} Error: Missing directory argument")
+            print(f"\nUsage: {sys.argv[0]} check-udl <directory> [--recursive] [--output=report.md]")
+            sys.exit(1)
+        directory = Path(sys.argv[2])
+        if not directory.exists() or not directory.is_dir():
+            print(f"{SYM_ERR} Error: Directory not found: {sys.argv[2]}")
+            sys.exit(1)
+        recursive = '--recursive' in sys.argv or '-r' in sys.argv
+        output_arg = next((a for a in sys.argv[3:] if a.startswith('--output=')), None)
+        report_file = output_arg.split('=', 1)[1] if output_arg else None
+        scope = 'recursively in' if recursive else 'in'
+        print(f"Checking UDL format pairing and cross-linking {scope} {directory}\n")
+        result = check_udl_directory(directory, recursive=recursive, report_file=report_file)
+        sys.exit(0 if result['passed'] == result['total'] else 1)
+
     elif command == 'check-html':
         if len(sys.argv) < 3:
             print(f"{SYM_ERR} Error: Missing file argument")
@@ -1779,8 +2139,10 @@ def main():
             sys.exit(1)
         html_file = sys.argv[2]
         output_arg = next((a for a in sys.argv[3:] if a.startswith('--output=')), None)
+        standard_arg = next((a for a in sys.argv[3:] if a.startswith('--standard=')), None)
+        standard = standard_arg.split('=', 1)[1] if standard_arg else 'WCAG2AA'
         report_file = output_arg.split('=', 1)[1] if output_arg else None
-        result = check_html_accessibility(html_file, report_file=report_file)
+        result = check_html_accessibility(html_file, report_file=report_file, standard=standard)
         sys.exit(0 if not result.get('error') and result['critical'] == 0 and result['serious'] == 0 else 1)
 
     elif command == 'check-html-all':
@@ -1792,15 +2154,21 @@ def main():
         if not directory.exists() or not directory.is_dir():
             print(f"{SYM_ERR} Error: Directory not found: {sys.argv[2]}")
             sys.exit(1)
-        html_files = sorted(directory.glob('*.html'))
+        recursive = '--recursive' in sys.argv or '-r' in sys.argv
+        standard_arg = next((a for a in sys.argv[3:] if a.startswith('--standard=')), None)
+        standard = standard_arg.split('=', 1)[1] if standard_arg else 'WCAG2AA'
+        html_files = sorted(directory.rglob('*.html') if recursive else directory.glob('*.html'))
         if not html_files:
-            print(f"No .html files found in {directory}")
+            scope = 'recursively in' if recursive else 'in'
+            print(f"No .html files found {scope} {directory}")
             sys.exit(0)
-        print(f"Checking {len(html_files)} HTML file(s) in {directory}\n")
+        scope = 'recursively in' if recursive else 'in'
+        standard_label = 'WCAG 2.1 AAA' if standard == 'WCAG2AAA' else 'WCAG 2.1 AA'
+        print(f"Checking {len(html_files)} HTML file(s) {scope} {directory} [{standard_label}]\n")
         passed = failed = skipped = 0
         for i, html_file in enumerate(html_files, 1):
             print(f"[{i}/{len(html_files)}] ", end='', flush=True)
-            r = check_html_accessibility(str(html_file))
+            r = check_html_accessibility(str(html_file), standard=standard)
             if r.get('tool_missing'):
                 sys.exit(1)
             if r.get('error'):
@@ -1838,11 +2206,14 @@ def main():
         if not directory.exists() or not directory.is_dir():
             print(f"{SYM_ERR} Error: Directory not found: {sys.argv[2]}")
             sys.exit(1)
-        pdf_files = sorted(directory.glob('*.pdf'))
+        recursive = '--recursive' in sys.argv or '-r' in sys.argv
+        pdf_files = sorted(directory.rglob('*.pdf') if recursive else directory.glob('*.pdf'))
         if not pdf_files:
-            print(f"No .pdf files found in {directory}")
+            scope = 'recursively in' if recursive else 'in'
+            print(f"No .pdf files found {scope} {directory}")
             sys.exit(0)
-        print(f"Checking {len(pdf_files)} PDF file(s) in {directory}\n")
+        scope = 'recursively in' if recursive else 'in'
+        print(f"Checking {len(pdf_files)} PDF file(s) {scope} {directory}\n")
         passed = failed = skipped = 0
         for i, pdf_file in enumerate(pdf_files, 1):
             print(f"[{i}/{len(pdf_files)}] ", end='', flush=True)
@@ -1866,7 +2237,7 @@ def main():
 
     else:
         print(f"{SYM_ERR} Error: Unknown command: {command}")
-        print(f"\nValid commands: add, fix, add-all, fix-all, validate, validate-all, report, check-packages, wizard, check-html, check-html-all, check-pdf, check-pdf-all")
+        print(f"\nValid commands: add, fix, add-all, fix-all, validate, validate-all, report, check-packages, wizard, check-html, check-html-all, check-pdf, check-pdf-all, check-udl")
         print(f"Add --dry-run to add/fix/add-all/fix-all to preview changes without writing files.")
         print(f"\nFor help, run: {sys.argv[0]} --help")
         sys.exit(1)

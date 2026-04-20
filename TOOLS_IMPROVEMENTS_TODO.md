@@ -14,64 +14,14 @@ Tracking improvements and enhancements for the LaTeX accessibility toolkit.
 ## 🔥 High Priority Improvements
 _Important features that significantly improve the toolkit_
 
-### HP2. Backup/Restore Functionality ⏳
-**Effort:** 🟡 Medium (1-2 hours) | **Priority:** 🔥 High
-
-**What it does:**
-Automatically create backups before modifying files, with ability to restore if something goes wrong.
-
-**Why it matters:**
-Users are nervous about tools modifying their .tex files. Backups provide peace of mind.
-
-**How to implement:**
-1. Add `--backup` flag (or make it default?)
-2. Copy file to `.bak` before making changes
-3. Add `restore` command to revert changes
-4. Maybe keep a log of what was backed up when
-
-**How to test:**
-```bash
-# Modify with backup
-python3 latex-accessibility.py add --backup myfile.tex
-# Should create myfile.tex.bak
-
-# Restore if needed
-python3 latex-accessibility.py restore myfile.tex
-# Restores from myfile.tex.bak
-
-# List all backups
-python3 latex-accessibility.py list-backups
-```
+_No open items._
 
 ---
 
 ## 📌 Medium Priority Improvements
 _Useful features that enhance usability_
 
-### MP4. Template System for Notices ⏳
-**Effort:** 🟢 Low (45 min) | **Priority:** 📌 Medium
-
-**What it does:**
-Let users customize the accessibility notice with templates.
-
-**Why it matters:**
-Different institutions may have different wording requirements.
-
-**How to implement:**
-1. Create `templates/` directory with default template
-2. Support variables: `{html_url}`, `{title}`, `{date}`, `{author}`
-3. Look for custom template in project directory
-4. Fall back to default if not found
-
-**Template example:**
-```latex
-\section*{Accessibility}
-Accessible version: \url{{html_url}}
-Last updated: {date}
-```
-
-**How to test:**
-Create custom template, run tool, verify custom text is used.
+_No open items._
 
 ---
 
@@ -228,6 +178,23 @@ Use `multiprocessing.Pool` to process files in parallel.
 ---
 
 # ✅ COMPLETED
+
+## latex-accessibility.py
+
+### HP2. Backup/Restore Functionality ✅ DONE
+Added `--backup` flag to `add`, `fix`, `add-all`, and `fix-all`. Creates `file.tex.bak` before writing. Added `restore <file.tex>` command and `list-backups [path]` command.
+
+### MP4. Template System for Notices ✅ DONE
+Created `sample-accessible-template.tex` — a fully commented, ready-to-compile LaTeX template demonstrating every accessibility feature the tool adds or checks for (packages, hypersetup, bookmarksetup, links, figures with alt text, tables with captions, color usage). Users copy it as a starting point.
+
+---
+
+## Universal Design
+
+### UDL1. UDL Format Pairing and Cross-Linking Check ✅ DONE
+Added `check-udl <directory>` command. For every standalone `.tex` file, verifies a paired `.html` and `.pdf` exist, the `.tex` accessibility notice links to the HTML version, and the HTML links back to the PDF. Supports `--recursive` and `--output=`. Fragment files (no `\documentclass`) and Jekyll `_site` directories are automatically skipped. Documents the UDL principle of multiple means of representation in README.
+
+---
 
 ## Output Accessibility Checking
 

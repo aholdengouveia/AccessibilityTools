@@ -9,6 +9,29 @@ Both tools use [Semantic Versioning](https://semver.org/): MAJOR.MINOR.PATCH.
 
 ## latex-accessibility.py
 
+### [1.5.0] — 2026-04-20
+
+#### Added
+- `--backup` flag for `add`, `fix`, `add-all`, and `fix-all` — creates a `file.tex.bak` copy before writing any changes. Backup is only created when changes are actually made (skipped files produce no backup).
+- `restore <file.tex>` command — copies `file.tex.bak` back over `file.tex`. Prints a clear error if no backup exists.
+- `list-backups [path]` command — lists all `*.tex.bak` files under a file or directory, showing size and modification timestamp. Defaults to the current directory if no path given.
+- `check-html` and `check-html-all` now auto-detect the Chrome/Chromium binary via `PUPPETEER_EXECUTABLE_PATH`, common binary names on `$PATH`, and known fixed locations — no manual configuration needed.
+- `--standard=` flag for `check-html` and `check-html-all` — supports `WCAG2AA` (default) and `WCAG2AAA` for stricter contrast and other AAA requirements.
+
+---
+
+### [1.4.0] — 2026-04-20
+
+#### Added
+- `check-udl <directory>` — Universal Design for Learning format audit. For every standalone `.tex` file in a directory, verifies that a paired `.html` and `.pdf` exist (multiple means of representation), that the `.tex` accessibility notice links to the HTML version, and that the generated HTML links back to the PDF. Supports `--recursive` / `-r` to walk subdirectories and `--output=<path>` to save a Markdown report. Exit code 0 = all compliant, 1 = gaps found.
+- Fragment files without `\documentclass` (CV sections, `\input`-only files) are automatically skipped — not reported as failures.
+- Jekyll `_site` build directories are excluded from recursive searches in `check-udl`, `check-html-all`, and `check-pdf-all`.
+- `--recursive` / `-r` flag added to `check-html-all` and `check-pdf-all` to recurse into subdirectories.
+- `pdfdisplaydoctitle=true` and `pdfuapart=1` now added automatically by the `add` command, addressing PDF/UA clause 7.1 (DisplayDocTitle) and clause 5 (PDF/UA conformance declaration). Requires the `hyperxmp` package, which is also added automatically.
+- `hyperxmp` package added automatically by `add` — inserts an XMP metadata stream into the PDF, addressing PDF/UA clause 7.1 (missing Metadata stream).
+
+---
+
 ### [1.3.0] — 2026-04-19
 
 #### Added

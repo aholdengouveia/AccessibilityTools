@@ -1,0 +1,222 @@
+% =============================================================================
+% sample-accessible-template.tex
+%
+% A ready-to-use accessible LaTeX template.
+% Every section below shows what this tool adds automatically — or what it
+% checks and warns about — so you know what good accessible LaTeX looks like.
+%
+% QUICK START:
+%   1. Fill in the CUSTOMIZE sections marked below.
+%   2. Compile with: pdflatex sample-accessible-template.tex
+%   3. Or let the tool handle a new file:
+%        python3 latex-accessibility.py add yourfile.tex
+% =============================================================================
+
+\documentclass[12pt]{article}
+
+
+% =============================================================================
+% ACCESSIBILITY PACKAGES
+% These are added automatically by: python3 latex-accessibility.py add yourfile.tex
+%
+% hyperxmp   — embeds XMP metadata stream in the PDF (PDF/UA clause 7.1)
+% hyperref   — clickable links, PDF metadata, bookmarks (must come before bookmark)
+% bookmark   — improved PDF navigation panel support
+% enumitem   — accessible list formatting with consistent spacing
+% =============================================================================
+\usepackage{hyperxmp}
+\usepackage{hyperref}
+\usepackage{bookmark}
+\usepackage{enumitem}
+
+
+% =============================================================================
+% PDF METADATA  [CUSTOMIZE: fill in your title, author, subject, and keywords]
+%
+% pdfdisplaydoctitle=true  — shows the pdftitle in the viewer title bar, not
+%                            the filename (PDF/UA clause 7.1 — DisplayDocTitle)
+% pdfuapart=1              — declares PDF/UA conformance in the XMP stream
+%                            (PDF/UA clause 5 — conformance declaration)
+% colorlinks/urlcolor      — coloured links instead of boxes; the RGB value
+%                            below gives 7:1 contrast on white (WCAG AAA)
+% =============================================================================
+\hypersetup{
+    pdfdisplaydoctitle=true,
+    pdfuapart=1,
+    colorlinks=true,
+    urlcolor=[RGB]{0,40,150},
+    linkcolor=[RGB]{0,40,150},
+    citecolor=[RGB]{0,40,150},
+    pdftitle={Your Document Title},          % CUSTOMIZE
+    pdfauthor={Your Name},                   % CUSTOMIZE
+    pdfsubject={Course or Subject},          % CUSTOMIZE
+    pdflang={en-US},
+    pdfkeywords={keyword1, keyword2}         % CUSTOMIZE
+}
+
+
+% =============================================================================
+% PDF BOOKMARKS
+% Added automatically by the tool.
+%   numbered — bookmark entries include section numbers
+%   open     — bookmark panel is open by default in PDF viewers
+% =============================================================================
+\bookmarksetup{
+    numbered,
+    open,
+}
+
+
+% =============================================================================
+% LIST SPACING
+% Added automatically by the tool.
+% nosep removes extra vertical space inside lists for cleaner screen-reader output.
+% =============================================================================
+\setlist{nosep}
+
+
+% =============================================================================
+% TITLE BLOCK  [CUSTOMIZE]
+% =============================================================================
+\title{Your Document Title}
+\author{
+    Your Name \\
+    Website: \href{https://example.com}{example.com} \\
+    \date{\vspace{-5ex}}
+}
+
+
+% =============================================================================
+% DOCUMENT BODY
+% =============================================================================
+\begin{document}
+
+\maketitle
+
+
+% =============================================================================
+% ACCESSIBILITY NOTICE
+% Added automatically by the tool when you provide an HTML URL.
+% Replace the URL below with the actual address of the HTML version.
+%
+%   python3 latex-accessibility.py add yourfile.tex
+%   (it will prompt for the HTML URL)
+% =============================================================================
+\section*{Accessibility Notice}
+This document is also available in HTML format at:
+
+Link: \href{https://example.com/yourdoc.html}{\textbf{https://example.com/yourdoc.html}}
+
+The HTML version provides enhanced accessibility features including keyboard
+navigation, screen reader support, responsive design, dark mode support, and
+high contrast options.
+
+
+% =============================================================================
+% LINKS
+% Wrap all URLs in \href{url}{\textbf{url}} with a "Link:" prefix.
+% The full URL as link text is WCAG-compliant — it is self-describing.
+% Plain \url{} is also acceptable but less visually distinct in print.
+%
+% The tool wraps bare URLs automatically.  If you write links by hand, use:
+%   Link: \href{https://example.com}{\textbf{https://example.com}}
+% =============================================================================
+\section*{Introduction}
+
+Example link to a resource:
+Link: \href{https://example.com/resource}{\textbf{https://example.com/resource}}
+
+
+% =============================================================================
+% LISTS
+% Use \begin{itemize} for unordered and \begin{enumerate} for ordered lists.
+% The enumitem package (above) ensures consistent, accessible list structure.
+% =============================================================================
+\section*{Objectives}
+\begin{itemize}
+    \item First objective.
+    \item Second objective.
+\end{itemize}
+
+\section*{Steps}
+\begin{enumerate}
+    \item First step.
+    \item Second step, with sub-steps:
+        \begin{enumerate}
+            \item Sub-step A.
+            \item Sub-step B.
+        \end{enumerate}
+    \item Third step.
+\end{enumerate}
+
+
+% =============================================================================
+% FIGURES
+% The tool checks for and warns about figures missing \caption.
+% Always include:
+%   1. An alt text comment — added automatically if missing:
+%        % Alt text: [Add description here for accessibility]
+%      Replace the placeholder with a real description before publishing.
+%   2. A \caption{} — visible description; required for accessibility.
+%
+% Replace the filename and texts below with your own.
+% =============================================================================
+\section*{Example Figure}
+
+\begin{figure}[h]
+    \centering
+    % Alt text: [REPLACE with a plain-English description of the image]
+    % Replace the \fbox below with: \includegraphics[width=0.8\textwidth]{your-image-filename}
+    \fbox{\parbox{0.75\textwidth}{\centering\vspace{1.5em}
+        \texttt{[Replace this box with your \textbackslash includegraphics command]}
+    \vspace{1.5em}}}
+    \caption{A descriptive caption explaining what this figure shows.}
+    \label{fig:example}
+\end{figure}
+
+
+% =============================================================================
+% TABLES
+% The tool checks for and warns about tables missing \caption.
+% Always include:
+%   1. A \caption{} above the tabular data.
+%   2. A bold header row so column roles are clear.
+% =============================================================================
+\section*{Example Table}
+
+\begin{table}[h]
+    \centering
+    \caption{An example table with an accessible caption.}
+    \begin{tabular}{|l|l|l|}
+        \hline
+        \textbf{Column A} & \textbf{Column B} & \textbf{Column C} \\
+        \hline
+        Row 1, A & Row 1, B & Row 1, C \\
+        Row 2, A & Row 2, B & Row 2, C \\
+        \hline
+    \end{tabular}
+    \label{tab:example}
+\end{table}
+
+
+% =============================================================================
+% COLOR
+% Never use color as the ONLY way to convey information — colorblind readers
+% will miss it.  The tool warns about \textcolor usage with no secondary cue.
+%
+% Instead of:  \textcolor{red}{Warning}
+% Write:       \textcolor{red}{\textbf{Warning}}
+%
+% The bold/italic/underline cue carries the meaning for users who cannot see color.
+% =============================================================================
+
+
+% =============================================================================
+% DELIVERABLES  [CUSTOMIZE]
+% =============================================================================
+\section*{Deliverables}
+
+Describe what should be submitted here, including file names, formats, and
+any screenshots or answers required.
+
+\end{document}

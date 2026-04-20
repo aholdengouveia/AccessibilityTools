@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Your Document Title</title>
+    <link href="../../css/accessible-lab.css" rel="stylesheet" type="text/css">
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    <header role="banner">
+        <h1>Your Document Title</h1>
+        <div class="author">
+            <p>Your Name</p>
+            <!-- <p>Website: <a href="https://example.com">https://example.com</a></p> -->
+            <!-- <p>GitHub: <a href="https://github.com/username" aria-label="GitHub profile">username</a></p> -->
+        </div>
+    </header>
+
+    <main role="main" id="main-content">
+        <section role="region" aria-labelledby="pdf-version-notice" class="accessibility-notice">
+            <h2 id="pdf-version-notice">PDF Version Available</h2>
+            <p>This document is also available in PDF format: <a href="sample-accessible-template.pdf">sample-accessible-template.pdf</a></p>
+            <p>The PDF version includes bookmarks for easy navigation and is optimized for printing.</p>
+        </section>
+
+        <nav role="navigation" aria-label="Table of Contents" class="toc">
+            <h2>On this page:</h2>
+            <ul>
+                <li><a href="#accessibility-notice">Accessibility Notice</a></li>
+                <li><a href="#introduction">Introduction</a></li>
+                <li><a href="#objectives">Objectives</a></li>
+                <li><a href="#steps">Steps</a></li>
+                <li><a href="#example-figure">Example Figure</a></li>
+                <li><a href="#example-table">Example Table</a></li>
+                <li><a href="#deliverables">Deliverables</a></li>
+            </ul>
+        </nav>
+
+<section role="region" aria-labelledby="accessibility-notice">
+<h2 id="accessibility-notice">Accessibility Notice</h2>
+<p>This document is also available in HTML format at:</p>
+
+<p>Link: <a href="https://example.com/yourdoc.html"><strong><a href="https://example.com/yourdoc.html">https://example.com/yourdoc.html</a></a></strong></p>
+
+<p>The HTML version provides enhanced accessibility features including keyboard navigation, screen reader support, responsive design, dark mode support, and high contrast options.</p>
+
+</section>
+
+<section role="region" aria-labelledby="introduction">
+<h2 id="introduction">Introduction</h2>
+<p>Example link to a resource: Link: <a href="https://example.com/resource"><strong><a href="https://example.com/resource">https://example.com/resource</a></a></strong></p>
+
+</section>
+
+<section role="region" aria-labelledby="objectives">
+<h2 id="objectives">Objectives</h2>
+<ul>
+<li>First objective.</li>
+<li>Second objective.</li>
+</ul>
+
+</section>
+
+<section role="region" aria-labelledby="steps">
+<h2 id="steps">Steps</h2>
+<ol>
+<li>First step.</li>
+<li>Second step, with sub-steps: enumerate</li>
+<li>Sub-step A.</li>
+<li>Sub-step B.</li>
+<li>Third step.</li>
+</ol>
+
+</section>
+
+<section role="region" aria-labelledby="example-figure">
+<h2 id="example-figure">Example Figure</h2>
+<figure>
+<img src="your-image-filename" alt="A descriptive caption explaining what this figure shows.">
+<figcaption>A descriptive caption explaining what this figure shows.</figcaption>
+</figure>
+
+</section>
+
+<section role="region" aria-labelledby="example-table">
+<h2 id="example-table">Example Table</h2>
+<div class="table-container">
+<table>
+<caption id="an-example-table-with-an-accessible-caption">An example table with an accessible caption.</caption>
+<thead>
+<tr>
+<th scope="col"><strong>Column A</strong></th>
+<th scope="col"><strong>Column B</strong></th>
+<th scope="col"><strong>Column C</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Row 1, A</td>
+<td>Row 1, B</td>
+<td>Row 1, C</td>
+</tr>
+<tr>
+<td>Row 2, A</td>
+<td>Row 2, B</td>
+<td>Row 2, C</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+</section>
+
+<section role="region" aria-labelledby="deliverables">
+<h2 id="deliverables">Deliverables</h2>
+<p>Describe what should be submitted here, including file names, formats, and any screenshots or answers required.</p>
+
+</section>
+
+    </main>
+</body>
+</html>

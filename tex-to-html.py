@@ -505,26 +505,34 @@ def convert_todolist(block):
 
 
 def convert_figure(block):
-    """Convert figure to HTML"""
-    # Extract image filename
+    """Convert figure/includegraphics to accessible HTML figure element"""
     img_match = re.search(r'\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}', block)
     if not img_match:
         return ""
 
     img_src = img_match.group(1)
 
-    # Extract caption
-    caption_match = re.search(r'\\caption\{([^}]+)\}', block)
-    caption = caption_match.group(1) if caption_match else ""
+    # Handle \caption{...} and \captionof{type}{...} (from the caption package)
+    caption = ""
+    caption_match = re.search(r'\\captionof\{[^}]*\}\{([^}]+)\}', block)
+    if caption_match:
+        caption = caption_match.group(1)
+    else:
+        caption_match = re.search(r'\\caption\{([^}]+)\}', block)
+        if caption_match:
+            caption = caption_match.group(1)
 
-    # Extract alt text
+    # Explicit \alt{} override; otherwise use caption as alt text
     alt_match = re.search(r'\\alt\{([^}]+)\}', block)
     alt_text = alt_match.group(1) if alt_match else caption
 
+    caption_clean = clean_latex(caption)
+    alt_clean = clean_latex(alt_text)
+
     html = "<figure>\n"
-    html += f'<img src="{img_src}" alt="{clean_latex(alt_text)}">\n'
-    if caption:
-        html += f"<figcaption>{clean_latex(caption)}</figcaption>\n"
+    html += f'<img src="{img_src}" alt="{alt_clean}">\n'
+    if caption_clean:
+        html += f"<figcaption>{caption_clean}</figcaption>\n"
     html += "</figure>\n\n"
 
     return html
@@ -726,6 +734,10 @@ def clean_latex(text):
     text = re.sub(r'\\_', '_', text)
     text = re.sub(r'\\\$', '$', text)
     text = re.sub(r'\\#', '#', text)
+
+    # Convert LaTeX non-breaking/forced spaces to regular spaces
+    text = re.sub(r'\\[ ~]', ' ', text)
+    text = re.sub(r'~', ' ', text)
 
     # Remove spacing/layout commands entirely (command + argument discarded)
     text = re.sub(r'\\(?:v|h)space\*?\{[^}]*\}', '', text)

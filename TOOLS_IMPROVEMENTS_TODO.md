@@ -191,6 +191,9 @@ Created `sample-accessible-template.tex` — a fully commented, ready-to-compile
 
 ## Universal Design
 
+### LINK1. HTML Link Text Auditor ✅ DONE
+Added `check-links` and `check-links-all` commands to `latex-accessibility.py` v1.6.0. Pure Python 3, no external dependencies. Audits HTML files for WCAG 2.4.4 (Level A), WCAG 2.4.9 (Level AAA), and Universal Design link text issues. Checks for empty links, vague text ('click here', 'here', 'view details', etc.), raw URLs as visible text, `href="#"` placeholders, duplicate text pointing to different destinations, and links nested inside headings. `aria-label` and image `alt` text aware. Supports `--recursive`, `--output`, `--verbose`, and `--plain`. Exit code 1 on Level A errors; 0 on warnings only. Includes Markdown report generation.
+
 ### UDL1. UDL Format Pairing and Cross-Linking Check ✅ DONE
 Added `check-udl <directory>` command. For every standalone `.tex` file, verifies a paired `.html` and `.pdf` exist, the `.tex` accessibility notice links to the HTML version, and the HTML links back to the PDF. Supports `--recursive` and `--output=`. Fragment files (no `\documentclass`) and Jekyll `_site` directories are automatically skipped. Documents the UDL principle of multiple means of representation in README.
 

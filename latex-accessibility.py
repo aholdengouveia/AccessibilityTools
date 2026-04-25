@@ -24,6 +24,9 @@ COMMANDS
   check-pdf-all <directory>     Audit all PDF files in a directory
   check-udl <directory>         Check UDL format pairing: every .tex has a paired .html
                                 and .pdf, and each format links to the other
+  check-links <file.html>       Audit HTML link text for WCAG 2.4.4 / 2.4.9 and Universal
+                                Design phrasing issues — no external tools required
+  check-links-all <directory>   Audit all HTML files in a directory for link text issues
 
 FLAGS (work with most commands)
   --backup                      Save a .bak copy before modifying any file
@@ -84,6 +87,11 @@ EXAMPLES
     python3 latex-accessibility.py check-pdf myfile.pdf
     python3 latex-accessibility.py check-pdf-all labs/
 
+  Audit HTML link text for WCAG 2.4.4/2.4.9 and Universal Design (no external tools):
+    python3 latex-accessibility.py check-links myfile.html
+    python3 latex-accessibility.py check-links-all site/ --recursive
+    python3 latex-accessibility.py check-links-all site/ --output=link-report.md
+
 WHAT 'add' DOES AUTOMATICALLY
   - Adds \usepackage{{bookmark}} and \usepackage{{enumitem}} if missing
   - Adds \bookmarksetup{{}} configuration for PDF navigation
@@ -100,14 +108,16 @@ WHAT 'add' WARNS ABOUT (requires manual fix in the source file)
 For full documentation see README.md or INSTALL.md.
 """
 
-__version__ = "1.3.0"
+__version__ = "1.6.0"
 
 import sys
 import re
 import platform
 import subprocess
 import shutil
-from datetime import datetime
+from collections import defaultdict
+from datetime import datetime, date
+from html.parser import HTMLParser
 from pathlib import Path
 
 try:
@@ -1486,6 +1496,398 @@ def _write_pdf_report(result, report_file):
     print(f"  {SYM_DONE} Report saved: {report_file}")
 
 
+# ---------------------------------------------------------------------------
+# HTML link text checker — WCAG 2.4.4, 2.4.9, and Universal Design
+#
+# Checks every <a> element's accessible name against known vague-text patterns
+# and other link quality rules.  No external tools required — Python 3 only.
+#
+# WCAG 2.4.4  Link Purpose (In Context)  — Level A   → errors
+# WCAG 2.4.9  Link Purpose (Link Only)   — Level AAA → warnings
+# Universal Design: equitable and flexible navigation for all users
+# ---------------------------------------------------------------------------
+
+# Exact link text matches (after normalisation) that are always vague.
+_LINK_VAGUE_EXACT = {
+    'click here', 'here', 'read more', 'more', 'link', 'this link',
+    'this', 'view details', 'details', 'learn more', 'click',
+    'see more', 'see here', 'get more', 'view more', 'go here', 'info', 'go',
+}
+
+# Short prefixes where the complete phrase is still too vague (≤3 words).
+_LINK_VAGUE_STARTS = ('click ', 'read ')
+
+_LINK_URL_RE = re.compile(r'^https?://', re.IGNORECASE)
+
+
+def _link_normalise(text):
+    """Lowercase, collapse whitespace, strip trailing punctuation for comparison."""
+    text = text.lower().strip()
+    text = re.sub(r'\s+', ' ', text)
+    return text.rstrip(' .,;:!?»')
+
+
+class _LinkParser(HTMLParser):
+    """Extract every <a> element: href, aria-label, text content, line number,
+    and whether the link is nested inside a heading element."""
+
+    _HEADING_TAGS = {'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}
+
+    def __init__(self):
+        super().__init__()
+        self.links = []
+        self._current = None
+        self._link_depth = 0
+        self._heading_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        attrs_dict = dict(attrs)
+        line, _ = self.getpos()
+        if tag in self._HEADING_TAGS:
+            self._heading_depth += 1
+        if tag == 'a':
+            self._link_depth += 1
+            if self._link_depth == 1:
+                self._current = {
+                    'href':       attrs_dict.get('href', ''),
+                    'aria_label': attrs_dict.get('aria-label', '').strip(),
+                    'text_parts': [],
+                    'line':       line,
+                    'in_heading': self._heading_depth > 0,
+                }
+        # Images inside links: alt text counts as the accessible name.
+        if tag == 'img' and self._current is not None:
+            alt = attrs_dict.get('alt', '').strip()
+            if alt:
+                self._current['text_parts'].append(alt)
+
+    def handle_endtag(self, tag):
+        if tag in self._HEADING_TAGS:
+            self._heading_depth = max(0, self._heading_depth - 1)
+        if tag == 'a':
+            if self._link_depth == 1 and self._current is not None:
+                raw = ''.join(self._current['text_parts'])
+                self._current['text'] = ' '.join(raw.split())
+                del self._current['text_parts']
+                self.links.append(self._current)
+                self._current = None
+            self._link_depth = max(0, self._link_depth - 1)
+
+    def handle_data(self, data):
+        if self._current is not None and self._link_depth == 1:
+            self._current['text_parts'].append(data)
+
+
+def _run_link_checks(links):
+    """Run all link text checks against a parsed link list.
+    Returns a list of (kind, code, criterion, message) tuples where
+    kind is 'error' or 'warn'."""
+    issues = []
+
+    # Build text → set-of-hrefs map for duplicate detection.
+    text_to_hrefs = defaultdict(set)
+    for lnk in links:
+        effective = lnk['aria_label'] or lnk['text']
+        norm = _link_normalise(effective)
+        if norm:
+            text_to_hrefs[norm].add(lnk['href'])
+
+    seen_duplicate = set()
+
+    for lnk in links:
+        href       = lnk['href']
+        raw_text   = lnk['text']
+        aria_label = lnk['aria_label']
+        effective  = aria_label or raw_text
+        norm       = _link_normalise(effective)
+        line       = lnk['line']
+
+        # 1. Empty link — WCAG 2.4.4 Level A
+        if not raw_text.strip() and not aria_label:
+            issues.append(('error', 'EMPTY_LINK', 'WCAG 2.4.4 (Level A)',
+                f'Line {line}: link has no text and no aria-label — '
+                'assistive technology will announce only the URL or nothing.'))
+            continue
+
+        # 2. Vague text — WCAG 2.4.4 Level A / 2.4.9 Level AAA
+        is_vague = (
+            norm in _LINK_VAGUE_EXACT
+            or (any(norm.startswith(p) for p in _LINK_VAGUE_STARTS)
+                and len(norm.split()) <= 3)
+        )
+        if is_vague:
+            issues.append(('error', 'VAGUE_TEXT',
+                'WCAG 2.4.4 (Level A) / 2.4.9 (Level AAA)',
+                f'Line {line}: link text "{raw_text.strip()}" does not describe '
+                'the destination — screen reader users navigating by link list '
+                'will not know where this goes.'))
+
+        # 3. Raw URL as visible text — Universal Design
+        if _LINK_URL_RE.match(raw_text.strip()) and not aria_label:
+            issues.append(('warn', 'URL_AS_TEXT', 'Universal Design',
+                f'Line {line}: link text is a raw URL. Consider a descriptive '
+                'label or add an aria-label.'))
+
+        # 4. href="#" placeholder — WCAG 2.4.4 / Universal Design
+        if href == '#':
+            issues.append(('warn', 'PLACEHOLDER_HREF',
+                'WCAG 2.4.4 (Level A) / Universal Design',
+                f'Line {line}: link "{raw_text.strip()}" uses href="#" and goes '
+                'nowhere — keyboard and screen reader users get no useful feedback.'))
+
+        # 5. Duplicate text → different destinations — WCAG 2.4.9 Level AAA
+        if norm and norm not in seen_duplicate:
+            hrefs = text_to_hrefs[norm]
+            if len(hrefs) > 1:
+                seen_duplicate.add(norm)
+                issues.append(('warn', 'DUPLICATE_TEXT', 'WCAG 2.4.9 (Level AAA)',
+                    f'Line {line}: link text "{raw_text.strip()}" is used for '
+                    f'{len(hrefs)} different destinations — users navigating by '
+                    'link list cannot distinguish them.'))
+
+        # 6. Link inside heading — Universal Design (advisory)
+        if lnk['in_heading']:
+            issues.append(('warn', 'LINK_IN_HEADING',
+                'Universal Design (advisory)',
+                f'Line {line}: link "{raw_text.strip()}" is nested inside a heading '
+                '— screen readers expose headings and links as separate lists.'))
+
+    return issues
+
+
+def check_html_link_text(html_file, verbose=False, report_file=None):
+    """Audit a single HTML file for WCAG 2.4.4 / 2.4.9 link text issues.
+
+    No external tools required.  Returns a dict with keys:
+      errors (int), warnings (int), issues (list of tuples), link_count (int),
+      error (str or None).
+    Writes a Markdown report to report_file if provided.
+    """
+    html_path = Path(html_file)
+    result = {
+        'file': html_path.name,
+        'path': str(html_path),
+        'errors': 0, 'warnings': 0,
+        'issues': [],
+        'link_count': 0,
+        'error': None,
+    }
+
+    if not html_path.exists():
+        result['error'] = f'File not found: {html_file}'
+        print(f'{SYM_ERR} File not found: {html_file}')
+        return result
+
+    try:
+        content = html_path.read_text(encoding='utf-8', errors='replace')
+    except OSError as exc:
+        result['error'] = str(exc)
+        print(f'{SYM_ERR} Could not read {html_file}: {exc}')
+        return result
+
+    parser = _LinkParser()
+    parser.feed(content)
+    links = parser.links
+    result['link_count'] = len(links)
+
+    raw_issues = _run_link_checks(links)
+    result['issues'] = raw_issues
+    result['errors']   = sum(1 for k, *_ in raw_issues if k == 'error')
+    result['warnings'] = sum(1 for k, *_ in raw_issues if k == 'warn')
+
+    if not raw_issues:
+        print(f'{SYM_OK} {html_path.name} — {len(links)} link(s), no issues')
+    else:
+        parts = []
+        if result['errors']:
+            parts.append(f"{result['errors']} error(s)")
+        if result['warnings']:
+            parts.append(f"{result['warnings']} warning(s)")
+        lead = SYM_ERR if result['errors'] else SYM_WARN
+        print(f'{lead} {html_path.name} — {", ".join(parts)}')
+        for kind, code, criterion, message in raw_issues:
+            sym = SYM_ERR if kind == 'error' else SYM_WARN
+            print(f'  {sym} [{code}] {message}')
+            print(f'      Criterion: {criterion}')
+            if verbose:
+                idx = raw_issues.index((kind, code, criterion, message))
+                # find the matching link for context
+                for lnk in links:
+                    lnk_line = str(lnk['line'])
+                    if lnk_line in message.split(':')[0]:
+                        print(f'      href: {lnk["href"] or "(empty)"}')
+                        if lnk['text']:
+                            print(f'      visible text: {lnk["text"]!r}')
+                        if lnk['aria_label']:
+                            print(f'      aria-label: {lnk["aria_label"]!r}')
+                        break
+
+    if report_file:
+        _write_link_report([result], report_file)
+
+    return result
+
+
+def check_html_link_text_all(directory, recursive=False, verbose=False, report_file=None):
+    """Audit all HTML files in a directory for WCAG 2.4.4 / 2.4.9 link text issues.
+
+    Returns (passed_count, failed_count, total_errors, total_warnings).
+    """
+    directory = Path(directory)
+    if recursive:
+        html_files = sorted(
+            f for f in directory.rglob('*.html')
+            if '_site' not in f.parts and not any(p.startswith('.') for p in f.parts)
+        )
+    else:
+        html_files = sorted(directory.glob('*.html'))
+
+    if not html_files:
+        scope = 'recursively in' if recursive else 'in'
+        print(f'No .html files found {scope} {directory}')
+        return 0, 0, 0, 0
+
+    scope = 'recursively in' if recursive else 'in'
+    print(f'Checking link text in {len(html_files)} HTML file(s) {scope} {directory}')
+    print(f'Standard: WCAG 2.4.4 (Level A), 2.4.9 (Level AAA), Universal Design\n')
+
+    all_results = []
+    passed = failed = total_errors = total_warnings = 0
+
+    for i, html_file in enumerate(html_files, 1):
+        print(f'[{i}/{len(html_files)}] ', end='', flush=True)
+        r = check_html_link_text(str(html_file), verbose=verbose)
+        all_results.append(r)
+        if r['errors'] or r['warnings']:
+            failed += 1
+        else:
+            passed += 1
+        total_errors   += r['errors']
+        total_warnings += r['warnings']
+
+    print()
+    print('─' * 50)
+    print(f'{SYM_DONE} Checked {len(html_files)} file(s): {passed} passed, {failed} with issues')
+    if total_errors:
+        print(f'  {SYM_ERR} {total_errors} error(s) — WCAG 2.4.4 Level A violation(s)')
+    if total_warnings:
+        print(f'  {SYM_WARN} {total_warnings} warning(s) — WCAG 2.4.9 AAA / Universal Design')
+
+    if report_file:
+        _write_link_report(all_results, report_file)
+
+    return passed, failed, total_errors, total_warnings
+
+
+def _write_link_report(results, report_file):
+    """Write a Markdown link accessibility report for one or more HTML files."""
+    today        = date.today().isoformat()
+    total_links  = sum(r['link_count'] for r in results)
+    total_errors = sum(r['errors']   for r in results)
+    total_warns  = sum(r['warnings'] for r in results)
+    files_ok     = sum(1 for r in results if not r['errors'] and not r['warnings'])
+
+    lines = [
+        '# Link Accessibility Report',
+        '',
+        f'**Generated:** {today}  ',
+        '**Standard:** WCAG 2.1 — 2.4.4 Link Purpose (Level A), '
+        '2.4.9 Link Purpose (Level AAA) — and Universal Design principles  ',
+        f'**Files checked:** {len(results)}  ',
+        f'**Total links:** {total_links}  ',
+        f'**Files passing:** {files_ok} / {len(results)}',
+        '',
+        '---',
+        '',
+        '## Summary',
+        '',
+        '| Metric | Count |',
+        '|--------|-------|',
+        f'| Files checked | {len(results)} |',
+        f'| Files with no issues | {files_ok} |',
+        f'| Files with issues | {len(results) - files_ok} |',
+        f'| Errors — WCAG 2.4.4 Level A (must fix) | {total_errors} |',
+        f'| Warnings — WCAG 2.4.9 AAA / Universal Design (recommended) | {total_warns} |',
+        f'| Total links checked | {total_links} |',
+        '',
+        '---',
+        '',
+        '## Issues by File',
+        '',
+    ]
+
+    for r in results:
+        errors = [(k, c, cr, m) for k, c, cr, m in r['issues'] if k == 'error']
+        warns  = [(k, c, cr, m) for k, c, cr, m in r['issues'] if k == 'warn']
+        lines.append(f'### {r["path"]}')
+        lines.append('')
+        if not r['issues']:
+            lines.append(f'{r["link_count"]} link(s) checked — no issues found.')
+            lines.append('')
+            continue
+        lines.append(
+            f'{r["link_count"]} link(s) checked — '
+            f'{len(errors)} error(s), {len(warns)} warning(s)'
+        )
+        lines.append('')
+        if errors:
+            lines.append('**Errors — WCAG Level A (must fix):**')
+            lines.append('')
+            for _, code, criterion, message in errors:
+                lines.append(f'- **[{code}]** {message}')
+                lines.append(f'  - Criterion: {criterion}')
+            lines.append('')
+        if warns:
+            lines.append('**Warnings — WCAG Level AAA / Universal Design (recommended):**')
+            lines.append('')
+            for _, code, criterion, message in warns:
+                lines.append(f'- **[{code}]** {message}')
+                lines.append(f'  - Criterion: {criterion}')
+            lines.append('')
+
+    lines += [
+        '---',
+        '',
+        '## Issue Reference',
+        '',
+        '| Code | Severity | Criterion | Description |',
+        '|------|----------|-----------|-------------|',
+        '| `EMPTY_LINK` | Error | WCAG 2.4.4 (A) | No text and no aria-label |',
+        '| `VAGUE_TEXT` | Error | WCAG 2.4.4 (A) / 2.4.9 (AAA) | Generic text: '
+        "'click here', 'here', 'read more', 'view details', etc. |",
+        '| `URL_AS_TEXT` | Warning | Universal Design | Visible text is a raw URL |',
+        "| `PLACEHOLDER_HREF` | Warning | WCAG 2.4.4 (A) / UD | href=\"#\" goes nowhere |",
+        '| `DUPLICATE_TEXT` | Warning | WCAG 2.4.9 (AAA) | Same text, different destinations |',
+        '| `LINK_IN_HEADING` | Warning | Universal Design | Link nested inside a heading |',
+        '',
+        '---',
+        '',
+        '## Why Link Text Matters',
+        '',
+        'Screen reader users and keyboard navigators frequently pull up a list of all '
+        'links on a page to scan for what they need. When link text says "click here" '
+        'or "here", every entry in that list is identical — the user cannot tell where '
+        'any link goes without reading surrounding context.',
+        '',
+        '**Universal Design** goes further: descriptive link text benefits every user, '
+        'including sighted users scanning a page and users with cognitive disabilities.',
+        '',
+        '**WCAG references:**',
+        '- [2.4.4 Link Purpose (In Context) — Level A]'
+        '(https://www.w3.org/WAI/WCAG21/Understanding/link-purpose-in-context.html)',
+        '- [2.4.9 Link Purpose (Link Only) — Level AAA]'
+        '(https://www.w3.org/WAI/WCAG21/Understanding/link-purpose-link-only.html)',
+        '',
+        f'*Generated by latex-accessibility.py v{__version__}*',
+    ]
+
+    try:
+        Path(report_file).write_text('\n'.join(lines), encoding='utf-8')
+        print(f'  {SYM_DONE} Report saved: {report_file}')
+    except OSError as exc:
+        print(f'{SYM_ERR} Could not write report: {exc}')
+
+
 def generate_report(directory, output_file=None, output_format='markdown'):
     """
     Generate a Markdown (default) or PDF accessibility compliance report
@@ -2235,10 +2637,41 @@ def main():
             print(f"  Skipped: {skipped}")
         sys.exit(0 if failed == 0 else 1)
 
+    elif command == 'check-links':
+        if len(sys.argv) < 3:
+            print(f"{SYM_ERR} Error: Missing file argument")
+            print(f"\nUsage: {sys.argv[0]} check-links <file.html> [--output=report.md]")
+            sys.exit(1)
+        html_file = sys.argv[2]
+        output_arg  = next((a for a in sys.argv[3:] if a.startswith('--output=')), None)
+        report_file = output_arg.split('=', 1)[1] if output_arg else None
+        result = check_html_link_text(html_file, verbose=_VERBOSE, report_file=report_file)
+        sys.exit(0 if not result.get('error') and result['errors'] == 0 else 1)
+
+    elif command == 'check-links-all':
+        if len(sys.argv) < 3:
+            print(f"{SYM_ERR} Error: Missing directory argument")
+            print(f"\nUsage: {sys.argv[0]} check-links-all <directory> [--recursive] [--output=report.md]")
+            sys.exit(1)
+        directory = Path(sys.argv[2])
+        if not directory.exists() or not directory.is_dir():
+            print(f"{SYM_ERR} Error: Directory not found: {sys.argv[2]}")
+            sys.exit(1)
+        recursive   = '--recursive' in sys.argv or '-r' in sys.argv
+        output_arg  = next((a for a in sys.argv[3:] if a.startswith('--output=')), None)
+        report_file = output_arg.split('=', 1)[1] if output_arg else None
+        _, failed, total_errors, _ = check_html_link_text_all(
+            directory, recursive=recursive, verbose=_VERBOSE, report_file=report_file
+        )
+        sys.exit(0 if total_errors == 0 else 1)
+
     else:
         print(f"{SYM_ERR} Error: Unknown command: {command}")
-        print(f"\nValid commands: add, fix, add-all, fix-all, validate, validate-all, report, check-packages, wizard, check-html, check-html-all, check-pdf, check-pdf-all, check-udl")
-        print(f"Add --dry-run to add/fix/add-all/fix-all to preview changes without writing files.")
+        print(f"\nValid commands: add, fix, add-all, fix-all, validate, validate-all,")
+        print(f"  report, check-packages, wizard,")
+        print(f"  check-html, check-html-all, check-pdf, check-pdf-all, check-udl,")
+        print(f"  check-links, check-links-all")
+        print(f"\nAdd --dry-run to add/fix/add-all/fix-all to preview changes without writing files.")
         print(f"\nFor help, run: {sys.argv[0]} --help")
         sys.exit(1)
 

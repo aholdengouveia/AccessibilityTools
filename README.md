@@ -1,6 +1,6 @@
-# LaTeX Accessibility Toolkit
+# Accessibility Toolkit
 
-Tools to make LaTeX documents accessible and convert them to clean, accessible HTML.
+Tools to make LaTeX documents accessible, convert them to clean HTML, and audit HTML pages for link accessibility.
 
 ---
 
@@ -12,6 +12,7 @@ Tools to make LaTeX documents accessible and convert them to clean, accessible H
   - [Accessible HTML](#accessible-html-tex-to-htmlpy)
   - [Checking Generated Output for Accessibility](#checking-the-generated-output-for-accessibility)
   - [Universal Design for Learning (UDL) Check](#universal-design-for-learning-udl-check)
+  - [HTML Link Text Check (WCAG & Universal Design)](#html-link-text-check-wcag--universal-design-link-checkerpy)
   - [Both PDF and HTML at once](#both-pdf-and-html-at-once-update-tex-outputssh)
 - [Full Workflow: New Lab File](#full-workflow-new-lab-file)
 - [What `add` Does Automatically](#what-add-does-automatically)
@@ -169,6 +170,39 @@ Fragment files (CV sections, `\input`-only files without `\documentclass`) are a
 
 **Why this matters:**
 A student using a screen reader may find the HTML version far more navigable. A student printing materials needs the PDF. A student with low vision may prefer HTML for browser zoom and high contrast. Providing both — and making each one point to the other — means no student has to hunt for the version that works for them.
+
+### HTML Link Text Check (WCAG & Universal Design) (`link-checker.py`)
+
+Link text is one of the most common accessibility failures on HTML pages. Screen reader users and keyboard navigators frequently browse a page by pulling up a list of all its links — when every link says "click here" or "here", that list is useless. This tool checks every `<a>` element's accessible name against WCAG 2.4.4 and 2.4.9 and Universal Design principles, with no external dependencies required.
+
+| Situation | Command |
+|-----------|---------|
+| Check a single HTML file | `python3 latex-accessibility.py check-links page.html` |
+| Check all HTML in a directory | `python3 latex-accessibility.py check-links-all site/` |
+| Check all HTML recursively | `python3 latex-accessibility.py check-links-all site/ --recursive` |
+| Save a Markdown report | `python3 latex-accessibility.py check-links-all site/ --output=link-report.md` |
+| Show href and text for each issue | Add `--verbose` to any command |
+| Screen-reader / script-friendly output | Add `--plain` to any command |
+
+**WCAG criteria checked:**
+
+| Issue code | Severity | Criterion | What it catches |
+|------------|----------|-----------|-----------------|
+| `EMPTY_LINK` | Error | WCAG 2.4.4 (Level A) | Link has no text and no `aria-label` |
+| `VAGUE_TEXT` | Error | WCAG 2.4.4 (A) / 2.4.9 (AAA) | Generic text: 'click here', 'here', 'read more', 'view details', 'learn more', 'more', 'this', 'go', 'info', and similar |
+| `URL_AS_TEXT` | Warning | Universal Design | Visible link text is a raw URL |
+| `PLACEHOLDER_HREF` | Warning | WCAG 2.4.4 (A) / Universal Design | `href="#"` link goes nowhere |
+| `DUPLICATE_TEXT` | Warning | WCAG 2.4.9 (Level AAA) | Same text used for two or more different destinations |
+| `LINK_IN_HEADING` | Warning | Universal Design (advisory) | Link nested inside a heading element |
+
+Errors (Level A) set exit code 1. Warnings alone exit with 0, so the tool can be used in CI pipelines that only gate on Level A compliance.
+
+The tool is `aria-label` aware: if a link carries `aria-label`, that value is used as the accessible name (matching how screen readers behave). Images inside links contribute their `alt` text to the accessible name so image-only links are evaluated correctly.
+
+**Why this matters for Universal Design:**
+Descriptive link text benefits every user, not just screen reader users. Sighted users scanning a page with their eyes also rely on link text to decide whether to follow a link. Clear link text reduces cognitive load, supports users with cognitive disabilities, and makes pages easier to use on mobile devices where links are harder to tap.
+
+---
 
 ### Both PDF and HTML at once (`update-tex-outputs.sh`)
 
@@ -626,7 +660,7 @@ See [INSTALL.md](INSTALL.md) for full setup instructions.
 
 | File | Purpose |
 |------|---------|
-| `latex-accessibility.py` | Main tool — add, fix, check, and report on LaTeX accessibility |
+| `latex-accessibility.py` | Main tool — add, fix, check, and report on LaTeX accessibility; includes HTML link text auditing |
 | `tex-to-html.py` | Convert `.tex` files to accessible HTML |
 | `accessible-lab.css` | Stylesheet for the generated HTML |
 | `update-tex-outputs.sh` | Interactive script — generate PDF and HTML for one file |

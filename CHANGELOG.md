@@ -1,9 +1,50 @@
 # Changelog
 
-All notable changes to the LaTeX accessibility toolkit are documented here.
+All notable changes to the accessibility toolkit are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).  
-Both tools use [Semantic Versioning](https://semver.org/): MAJOR.MINOR.PATCH.
+All tools use [Semantic Versioning](https://semver.org/): MAJOR.MINOR.PATCH.
+
+---
+
+## latex-accessibility.py
+
+### [1.6.0] — 2026-04-21
+
+#### Added
+- `check-links <file.html>` — audit a single HTML file for WCAG 2.4.4 / 2.4.9 link text issues and Universal Design phrasing. No external tools required (Python 3 only).
+- `check-links-all <directory>` — batch version; supports `--recursive` / `-r` and `--output=<path>` for a Markdown report. Automatically skips `_site`, `node_modules`, and hidden directories.
+- Six checks across two severity levels:
+  - **Errors** (WCAG 2.4.4 Level A — must fix): `EMPTY_LINK` (no text, no aria-label), `VAGUE_TEXT` (generic phrases such as 'click here', 'here', 'read more', 'view details', 'learn more', 'more', 'this', 'go', 'info')
+  - **Warnings** (WCAG 2.4.9 Level AAA / Universal Design): `URL_AS_TEXT` (raw URL as visible text), `PLACEHOLDER_HREF` (href="#" goes nowhere), `DUPLICATE_TEXT` (same text, different destinations), `LINK_IN_HEADING` (link nested inside a heading element)
+- `aria-label` aware: when present, `aria-label` is used as the accessible name, matching screen reader behaviour. Images inside links contribute their `alt` attribute to the accessible name.
+- `--verbose` shows href and link text alongside each issue.
+- Markdown report (`--output=`) includes per-file issue lists, a summary table, an issue reference table, and an explanation of why link text matters for Universal Design.
+- Exit code 0 when no Level A errors are present; 1 when errors exist (warnings alone do not set exit code 1, safe for CI pipelines gating on Level A only).
+
+---
+
+## [archived] link-checker.py
+
+Previously planned as a standalone script; functionality merged into `latex-accessibility.py` v1.6.0 as `check-links` / `check-links-all` commands.
+- Parses HTML files using Python's built-in `html.parser`. Captures each `<a>` element's href, visible text, `aria-label`, source line number, and whether it is nested inside a heading.
+- `aria-label` awareness: when present, the `aria-label` value is treated as the accessible name (overriding visible text), matching how assistive technology behaves.
+- `<img>` alt text awareness: images inside links contribute their `alt` attribute to the accessible name so image-only links are evaluated correctly.
+- Six checks across two severity levels:
+  - **Errors** (WCAG 2.4.4 Level A — must fix):
+    - `EMPTY_LINK` — link has no text content and no `aria-label`
+    - `VAGUE_TEXT` — link text matches known non-descriptive patterns such as 'click here', 'here', 'read more', 'view details', 'learn more', 'more', 'this', 'go', 'info', and short phrases starting with 'click ' or 'read '
+  - **Warnings** (WCAG 2.4.9 Level AAA / Universal Design — recommended):
+    - `URL_AS_TEXT` — visible link text is a raw URL; a human-readable label is clearer for all users
+    - `PLACEHOLDER_HREF` — `href="#"` goes nowhere; keyboard and screen reader users get no useful feedback
+    - `DUPLICATE_TEXT` — the same link text points to two or more different destinations, preventing users from distinguishing them when navigating by link list
+    - `LINK_IN_HEADING` — link nested inside a heading element; screen readers expose headings and links as separate navigation lists
+- Accepts a single HTML file or a directory. `--recursive` / `-r` walks subdirectories, automatically skipping `_site`, `node_modules`, and hidden directories.
+- `--output=<path>` saves a structured Markdown report including per-file issue lists, a summary table, an issue reference table, and an explanation of why link text matters for screen reader users and Universal Design.
+- `--verbose` adds href and raw link text to each console issue line for easier debugging.
+- `--plain` replaces all emoji status symbols with `[OK]` / `[WARN]` / `[ERR]` / `[SKIP]` / `[DONE]` for screen reader users and scripting.
+- `--version` / `-v` and `--help` / `-h` flags consistent with the rest of the toolkit.
+- Exit code 0 when no Level A errors are found; exit code 1 when errors are present (warnings alone do not set exit code 1).
 
 ---
 
